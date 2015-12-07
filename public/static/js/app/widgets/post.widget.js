@@ -11,7 +11,8 @@ ib.widget("post", function(window, $, undefined) {
 		// The default values that are set behind init values.
 		defaults : {
 			classname : {
-				'post-hover'  : "post-hover"
+				'post-hover'  : "post-hover",
+				'cite-you'    : "cite-you"
 			},
 			
 			// Selectors for finding and binding elements.
@@ -72,14 +73,15 @@ ib.widget("post", function(window, $, undefined) {
 			
 			var posTop  = linkRect.top + window.scrollY;
 			
-			if (posTop + boxHeight > window.scrollY + window.innerHeight)
+			// Is the box's bottom below the bottom of the screen?
+			if (posTop + boxHeight + 25 > window.scrollY + window.innerHeight)
 			{
 				// Selects the larger of two values:
 				// A) Our position in the scroll, or
 				// B) The hidden part of the post subtracted from the top.
 				// This check will try to keep the entire post visible,
 				// but will always keep the top of the post visible.
-				var posTopDiff = (posTop + boxHeight) - (window.scrollY + window.innerHeight);
+				var posTopDiff = (posTop + boxHeight + 25) - (window.scrollY + window.innerHeight);
 				posTop = Math.max( window.scrollY, posTop - posTopDiff );
 			}
 			
@@ -186,10 +188,38 @@ ib.widget("post", function(window, $, undefined) {
 				widget.$cite.remove();
 			}
 			
-			$(widget.options.classname['post-hover']).remove();
+			$("."+widget.options.classname['post-hover']).remove();
 			
 			widget.$cite    = null;
 			widget.citeLoad = null;
+		},
+		
+		addCiteAuthorship : function() {
+			var cites = [];
+			
+			// Loop through each citation.
+			$(widget.options.selector['cite'], widget.$widget).each(function() {
+				var board = this.dataset.board_uri;
+				var post  = this.dataset.board_id.toString();
+				
+				// Check and see if we have an item for this citation's board.
+				if (typeof cites[board] === "undefined")
+				{
+					if (localStorage.getItem("yourPosts."+board) !== null)
+					{
+						cites[board] = localStorage.getItem("yourPosts."+board).split(",");
+					}
+					else
+					{
+						cites[board] = [];
+					}
+				}
+				
+				if (cites[board].length > 0 && cites[board].indexOf(post) >= 0)
+				{
+					this.className += " " + widget.options.classname['cite-you'];
+				}
+			});
 		},
 		
 		// Events
@@ -206,6 +236,16 @@ ib.widget("post", function(window, $, undefined) {
 					$inline[0].pause(0);
 					$inline[0].src = "";
 					$inline[0].load();
+				}
+				
+				if ($img.is('[data-thumb-width]'))
+				{
+					$img.css('width', $img.attr('data-thumb-width') + "px");
+				}
+				
+				if ($img.is('[data-thumb-height]'))
+				{
+					$img.css('height', $img.attr('data-thumb-height') + "px");
 				}
 				
 				$item.removeClass('attachment-expanded');
@@ -319,7 +359,19 @@ ib.widget("post", function(window, $, undefined) {
 							'opacity'             : 0.5,
 						});
 					
+					// Clear source first so that lodaing works correctly.
 					$img
+						.attr('data-thumb-width', $img.width())
+						.attr('data-thumb-height', $img.height())
+						.attr('src', "")
+						.css({
+							'width'  : "auto",
+							'height' : "auto"
+						});
+					
+					$img
+						// Change the source of our thumb to the full image.
+						.attr('src', $link.attr('data-download-url'))
 						// Bind an event to handle the image loading.
 						.one("load", function() {
 							// Remove our opacity change.
@@ -329,9 +381,7 @@ ib.widget("post", function(window, $, undefined) {
 								// 'min-height'       : '',
 								'opacity'          : ""
 							});
-						})
-						// Finally change the source of our thumb to the full image.
-						.attr('src', $link.attr('data-download-url'));
+						});
 					
 					event.preventDefault();
 					return false;
@@ -515,6 +565,7 @@ ib.widget("post", function(window, $, undefined) {
 				// Data of our widget, the item we are hoping to insert new citations into.
 				var $detail          = $(widget.options.selector['cite-slot'], widget.$widget);
 				var $backlinks       = $detail.children();
+				var backlinks        = 0;
 				var widget_board_uri = widget.$widget.attr('data-board_uri');
 				var widget_board_id  = widget.$widget.attr('data-board_id');
 				
@@ -549,6 +600,9 @@ ib.widget("post", function(window, $, undefined) {
 										.data('board_id', post_board_id)
 										.attr('href', "/" + post_board_uri + "/post/" + post_board_id)
 										.appendTo($detail);
+										
+									$backlinks = $backlinks.add($backlink);
+									++backlinks;
 									
 									// Believe it or not this is actually important.
 									// it adds a space after each item.
@@ -567,6 +621,11 @@ ib.widget("post", function(window, $, undefined) {
 						});
 					});
 				});
+				
+				if (backlinks)
+				{
+					widget.addCiteAuthorship();
+				}
 			}
 		},
 		
@@ -599,6 +658,7 @@ ib.widget("post", function(window, $, undefined) {
 				;
 				
 				widget.cachePost();
+				widget.addCiteAuthorship();
 			}
 		},
 		

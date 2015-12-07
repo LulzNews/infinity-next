@@ -36,8 +36,6 @@
 	 */
 	div.attachment-wrapper {
 		width: 125px;
-		height: 125px;
-		line-height: 125px;
 	}
 	img.attachment-img {
 		max-width: 125px;
@@ -123,8 +121,6 @@
 	 */
 	div.attachment-wrapper {
 		width: 150px;
-		height: 150px;
-		line-height: 150px;
 	}
 	img.attachment-img {
 		max-width: 150px;
@@ -133,10 +129,11 @@
 }
 
 /**
- * 840px Min
+ * 728px width and 480px height
  * Anything bigger
  */
-@media (min-width: 840px) {
+@media (min-width: 728px) and (min-height: 480px) {
+	
 	/**
 	 * Primary Navigation
 	 */
@@ -196,12 +193,7 @@
 		nav.boardlist .boardlist-item:last-child::after {
 			display: none;
 		}
-}
-
-/**
- * 1028px width and 480px height
- */
-@media (min-width: 1028px) and (min-height: 480px) {
+	
 	/**
 	 * Navigation
 	 */
@@ -292,33 +284,40 @@
 				border-bottom: none;
 			}
 	
-	html.js body.responsive main.index-threaded .thread {
-		padding-right: 340px;
+	/**
+	 * Catalog
+	 */
+	body.responsive main.index-catalog section.index-threads {
+		padding: 0 45px;
 	}
-	html.js body.responsive main.index-threaded .post,
-	html.js body.responsive main.index-threaded .post-hover {
-		max-width: 70vw;
-	}
-	
-	/* Advertisements */
-	html.js body.responsive main.index-threaded aside.advertiser.top-left {
-		text-align: left;
-	}
-	html.js body.responsive main.index-threaded aside.advertiser.bottom-right {
-		position: absolute;
-		bottom: 0;
-		right: 5px;
-		
-		width: 310px;
-	}
-		html.js body.responsive main.index-threaded aside.advertiser.bottom-right figure.ad-field {
-			display: block;
-			width: 310px;
+		body.responsive main.index-catalog .thread-item {
+			max-width: 180px;
 		}
+	
+	/**
+	 * Thumbnailing
+	 */
+	div.attachment-wrapper {
+		width: 200px;
+	}
+	img.attachment-img {
+		max-width: 200px;
+		max-height: 200px;
+	}
+}
+
+/**
+ * 1440px width and 480px height
+ */
+@media (min-width: 1440px) and (min-height: 480px) {
 	
 	/**
 	 * Sidebar
 	 */
+	html.js body.responsive main.index-threaded .thread {
+		padding-right: 340px;
+	}
+	
 	html.js body.responsive main.index-threaded aside.index-sidebar {
 		position: absolute;
 		right: 0;
@@ -337,28 +336,22 @@
 			position: absolute;
 		}
 	
-	/**
-	 * Catalog
-	 */
-	body.responsive main.index-catalog section.index-threads {
-		padding: 0 45px;
+	/* Advertisements */
+	html.js body.responsive main.index-threaded aside.advertiser.top-left {
+		text-align: left;
 	}
-		body.responsive main.index-catalog .thread-item {
-			max-width: 180px;
+	html.js body.responsive main.index-threaded aside.advertiser.bottom-right {
+		position: absolute;
+		bottom: 0;
+		right: 5px;
+		
+		width: 310px;
+	}
+		html.js body.responsive main.index-threaded aside.advertiser.bottom-right figure.ad-field {
+			display: block;
+			width: 310px;
 		}
 	
-	/**
-	 * Thumbnailing
-	 */
-	div.attachment-wrapper {
-		width: 200px;
-		height: 200px;
-		line-height: 200px;
-	}
-	img.attachment-img {
-		max-width: 200px;
-		max-height: 200px;
-	}
 }
 
 

@@ -167,6 +167,20 @@ ib.widget("postbox", function(window, $, undefined) {
 					widget.$widget.trigger('fileFailed', [ file ]);
 				},
 				
+				removedfile : function(file) {
+					var _ref;
+					
+					if (file.previewElement) {
+						if ((_ref = file.previewElement) != null) {
+							_ref.parentNode.removeChild(file.previewElement);
+						}
+					}
+					
+					widget.resizePostbox();
+					
+					return this._updateMaxFilesReachedClass();
+				},
+				
 				success : function(file, response, xhr) {
 					if (typeof response !== "object")
 					{
@@ -221,9 +235,16 @@ ib.widget("postbox", function(window, $, undefined) {
 						"<div class=\"dz-progress\"><span class=\"dz-upload\" data-dz-uploadprogress></span></div>" +
 						"<div class=\"dz-success\">" +
 							"<div class=\"dz-success-mark\">" +
-								"<svg width=\"54px\" height=\"54px\" viewBox=\"0 0 54 54\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xmlns:sketch=\"http://www.bohemiancoding.com/sketch/ns\">" +
+								"<svg viewBox=\"0 0 54 54\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xmlns:sketch=\"http://www.bohemiancoding.com/sketch/ns\">" +
 									"<g id=\"Page-1\" stroke=\"none\" stroke-width=\"1\" fill=\"none\" fill-rule=\"evenodd\" sketch:type=\"MSPage\">" +
-										"<path d=\"M23.5,31.8431458 L17.5852419,25.9283877 C16.0248253,24.3679711 13.4910294,24.366835 11.9289322,25.9289322 C10.3700136,27.4878508 10.3665912,30.0234455 11.9283877,31.5852419 L20.4147581,40.0716123 C20.5133999,40.1702541 20.6159315,40.2626649 20.7218615,40.3488435 C22.2835669,41.8725651 24.794234,41.8626202 26.3461564,40.3106978 L43.3106978,23.3461564 C44.8771021,21.7797521 44.8758057,19.2483887 43.3137085,17.6862915 C41.7547899,16.1273729 39.2176035,16.1255422 37.6538436,17.6893022 L23.5,31.8431458 Z M27,53 C41.3594035,53 53,41.3594035 53,27 C53,12.6405965 41.3594035,1 27,1 C12.6405965,1 1,12.6405965 1,27 C1,41.3594035 12.6405965,53 27,53 Z\" id=\"Oval-2\" stroke-opacity=\"0.198794158\" stroke=\"#747474\" fill-opacity=\"0.816519475\" fill=\"#FFFFFF\" sketch:type=\"MSShapeGroup\"></path>" +
+										"<path d=\"M23.5,31.8431458 L17.5852419,25.9283877 C16.0248253,24.3679711 13.4910294,24.366835 11.9289322,25.9289322 C10.3700136,27.4878508 10.3665912,30.0234455 11.9283877,31.5852419 L20.4147581,40.0716123 C20.5133999,40.1702541 20.6159315,40.2626649 20.7218615,40.3488435 C22.2835669,41.8725651 24.794234,41.8626202 26.3461564,40.3106978 L43.3106978,23.3461564 C44.8771021,21.7797521 44.8758057,19.2483887 43.3137085,17.6862915 C41.7547899,16.1273729 39.2176035,16.1255422 37.6538436,17.6893022 L23.5,31.8431458 Z M27,53 C41.3594035,53 53,41.3594035 53,27 C53,12.6405965 41.3594035,1 27,1 C12.6405965,1 1,12.6405965 1,27 C1,41.3594035 12.6405965,53 27,53 Z\" " +
+											"id=\"Oval-2\" " +
+											"stroke-opacity=\"0.198794158\" " +
+											"stroke=\"#747474\" " +
+											"fill-opacity=\"0.816519475\" " +
+											"fill=\"#FFFFFF\" " +
+											"sketch:type=\"MSShapeGroup\" " +
+										"></path>" +
 									"</g>" +
 								"</svg>" +
 							"</div>" +
@@ -237,6 +258,38 @@ ib.widget("postbox", function(window, $, undefined) {
 		
 		hasCaptcha : function() {
 			return $(widget.options.selector['captcha-row'], widget.$widget).is(":visible");
+		},
+		
+		resizePostbox : function() {
+			if (widget.resizable)
+			{
+				if (window.innerHeight < 480 || window.innerWidth < 1028)
+				{
+					widget.unbind.draggable();
+					widget.unbind.resize();
+				}
+				else
+				{
+					// Trigger resize on the post body.
+					// Forces the post box to obey new window constraints.
+					var $post    = $(widget.options.selector['form-body'], widget.$widget);
+					var uiWidget = $post.data('ui-resizable');
+					
+					// Widget is bound and we have data
+					if (uiWidget && !jQuery.isEmptyObject(uiWidget.prevPosition))
+					{
+						// This is copy+pasted from the source code because there is no polite way
+						// to handle it otherwise.
+						uiWidget._updatePrevProperties();
+						uiWidget._trigger( "resize", event, uiWidget.ui() );
+						uiWidget._applyChanges();
+					}
+				}
+			}
+			else if (window.innerHeight >= 480 && window.innerWidth >= 1028)
+			{
+				widget.bind.resize();
+			}
 		},
 		
 		// Events
@@ -540,8 +593,9 @@ ib.widget("postbox", function(window, $, undefined) {
 						this.style.top = 45 + "px";
 					}
 					
-					this.style.left = "auto";
-					this.style.right = right + "px";
+					this.style.height = "auto";
+					this.style.left   = "auto";
+					this.style.right  = right + "px";
 				}
 			},
 			
@@ -559,17 +613,16 @@ ib.widget("postbox", function(window, $, undefined) {
 			
 			postResize    : function(event, ui) {
 				var $post = $(this);
-				var $form = $post.resizable( "option", "alsoResize" );
 				
 				ui.position.top  = 0;
 				ui.position.left = 0;
 				
-				var formHangY   = window.innerHeight - ($form.position().top + $form.outerHeight());
-				ui.size.width   = Math.min(ui.size.width, $form.width());
+				var formHangY   = window.innerHeight - (widget.$widget.position().top + widget.$widget.outerHeight());
+				ui.size.width   = Math.min(ui.size.width, widget.$widget.width());
 				ui.size.height += Math.min(0, formHangY);
 				
-				$form.css({
-					'height' : formHangY > 0 ? "auto" : window.innerHeight - $form.position().top
+				widget.$widget.css({
+					'height' : formHangY > 0 ? "auto" : window.innerHeight - widget.$widget.position().top
 				});
 				
 				$post.css('width', ui.size.width);
@@ -623,35 +676,7 @@ ib.widget("postbox", function(window, $, undefined) {
 				// also bubble up to the window, so this gets called when the post box resizes too.
 				if (event.target === window)
 				{
-					if (widget.resizable)
-					{
-						if (window.innerHeight < 480 || window.innerWidth < 1028)
-						{
-							widget.unbind.draggable();
-							widget.unbind.resize();
-						}
-						else
-						{
-							// Trigger resize on the post body.
-							// Forces the post box to obey new window constraints.
-							var $post    = $(widget.options.selector['form-body'], widget.$widget);
-							var uiWidget = $post.data('ui-resizable');
-							
-							// Widget is bound and we have data
-							if (uiWidget && !jQuery.isEmptyObject(uiWidget.prevPosition))
-							{
-								// This is copy+pasted from the source code because there is no polite way
-								// to handle it otherwise.
-								uiWidget._updatePrevProperties();
-								uiWidget._trigger( "resize", event, uiWidget.ui() );
-								uiWidget._applyChanges();
-							}
-						}
-					}
-					else if (window.innerHeight >= 480 && window.innerWidth >= 1028)
-					{
-						widget.bind.resize();
-					}
+					widget.resizePostbox();
 				}
 			}
 		},
@@ -701,6 +726,8 @@ ib.widget("postbox", function(window, $, undefined) {
 						widget.$widget.resizable({
 							handles:  null,
 							minWidth: 300
+						}).css({
+							height: "auto"
 						});
 						
 						widget.resizable = true;

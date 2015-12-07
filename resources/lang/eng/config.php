@@ -49,10 +49,12 @@ return [
 		
 		'adventures'         => "Adventure Options",
 		'boards'             => "Board Options",
+		'board_banned'       => "Ban Page Images",
 		'board_banners'      => "Board Banners",
 		'board_basic'        => "Basic Details",
 		'board_diplomacy'    => "Board Diplomacy",
 		'board_ephemerality' => "Content Ephemerality",
+		'board_flags'        => "Custom Flags",
 		'board_originality'  => "Content Originality",
 		'board_posts'        => "Post Options",
 		'board_threads'      => "Thread Options",
@@ -89,6 +91,8 @@ return [
 		'adventureIcons'           => "Show icons for adventure posts",
 		
 		'boardAssetBannerUpload'   => "Upload new board banner",
+		'boardAssetbannedUpload'   => "Upload new banned image",
+		'boardAssetFlagUpload'     => "Upload new custom flag",
 		
 		'boardCreateMax'           => "Maximum boards per user",
 		'boardCreateTimer'         => "Cooldown between board creations (min)",

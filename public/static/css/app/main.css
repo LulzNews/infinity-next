@@ -417,6 +417,9 @@ form {
 		font-size: 120%;
 		line-height: 1.4545em;
 	}
+		select.field-control {
+			height: 1.9em;
+		}
 		span.field-control {
 			border-color: rgba(0,0,0,0);
 		}
@@ -663,6 +666,7 @@ main.cp form.form-config {
 			}
 				dl.option-asset img.board-asset {
 					max-width: 90%;
+					vertical-align: middle;
 				}
 			
 			#config-permissions dl.option {
@@ -692,7 +696,22 @@ main.cp form.form-config {
 			}
 				dl.option-asset dd.option-definition {
 					margin: 0;
+					white-space: nowrap;
 				}
+					dl.option-asset dd.option-definition.asset-definition {
+						line-height: 1.8em;
+						margin-right: 2em;
+					}
+						dl.option-asset dd.option-definition.asset-definition label.field-label {
+							vertical-align: middle;
+						}
+						dl.option-asset dd.option-definition .asset-enable-input,
+						dl.option-asset dd.option-definition .asset-name-input,
+						dl.option-asset dd.option-definition .asset-file-input {
+							display: inline-block;
+							max-width: 40%;
+							vertical-align: middle;
+						}
 					dd.option-definition label.field-label {
 						display: inline-block;
 						vertical-align: top;
@@ -793,8 +812,9 @@ main.cp form.form-config {
 			}
 				form.form-asset img.form-asset-img {
 					display: inline-block;
-					max-width: 100%;
 					height: auto;
+					max-width: 250px;
+					max-height: 250px;
 				}
 
 /*
@@ -1996,6 +2016,15 @@ section.index-form {
 				max-height: none;
 			}
 			
+			form.form-post .row-double #email {
+				width: 60%;
+			}
+			form.form-post .row-double #flag {
+				float: right;
+				border-left: none;
+				width: 40%;
+			}
+			
 			form.form-post button.field-submit {
 				box-sizing: border-box;
 				margin: 0;
@@ -2113,6 +2142,7 @@ section.index-form {
 						position: absolute;
 						top: 0.25em;
 						left: 0.5em;
+						right: 0.5em;
 						z-index: 20;
 					}
 						.dz-container .dz-preview .dz-actions .dz-remove,
@@ -2121,12 +2151,14 @@ section.index-form {
 							zoom: 1;
 							
 							height: 18px;
+							line-height: 18px;
+							text-indent: 0;
 							min-width: 18px;
 							
 							border-radius: 5px;
 							font-size: 12px;
-							line-height: 30px;
-							margin: 0.25em auto 0.25em 0;
+							line-height: 18px;
+							margin: 0.25em 0 0.25em 0;
 							padding: 0 0 1px 0;
 							outline: none;
 							
@@ -2137,7 +2169,6 @@ section.index-form {
 							
 							color: #C40000;
 							font-size: 11px;
-							line-height: 18px;
 							text-align: center;
 							vertical-align: text-bottom;
 							
@@ -2146,9 +2177,11 @@ section.index-form {
 						}
 						.dz-container .dz-preview .dz-actions .dz-remove {
 							display: inline-block;
+							float: left;
 						}
 						.dz-container .dz-preview .dz-actions .dz-spoiler {
-							text-align: left;
+							text-align: right;
+							float: right;
 						}
 							.dz-container .dz-preview .dz-actions .dz-spoiler .dz-spoiler-check {
 								display: inline-block;
@@ -2157,20 +2190,24 @@ section.index-form {
 								margin: 2px 0 3px 2px;
 								width: 13px;
 								height: 13px;
+								transform: scale(0.75, 0.75);
+								float: left;
 							}
 							.dz-container .dz-preview .dz-actions .dz-spoiler .dz-spoiler-desc {
 								display: none;
 								padding-right: 0.5em;
-								margin-left: 0.25em;
-								vertical-align: text-bottom;
+								margin-left: 0.1em;
+								vertical-align: middle;
 								line-height: 18px;
 								color: black;
+								float: left;
 							}
 								.dz-container .dz-preview:hover .dz-actions .dz-spoiler .dz-spoiler-desc {
 									display: inline-block;
 								}
 					
 					.dz-container .dz-preview .dz-details {
+						display: block;
 						z-index: 20;
 						position: absolute;
 						bottom: 0;
@@ -2237,10 +2274,8 @@ section.index-form {
 						z-index: 500;
 						position: absolute;
 						display: block;
-						top: 50%;
-						left: 50%;
-						margin-left: -27px;
-						margin-top: -27px;
+						bottom: 2px;
+						right: 2px;
 					}
 						.dz-container .dz-preview.dz-success .dz-success-mark {
 							opacity: 1;
@@ -2254,8 +2289,8 @@ section.index-form {
 						.dz-container .dz-preview .dz-success-mark svg,
 						.dz-container .dz-preview .dz-error-mark svg {
 							display: block;
-							width: 54px;
-							height: 54px;
+							width: 26px;
+							height: 26px;
 						}
 					
 					.dz-container .dz-preview .dz-progress {
@@ -2489,11 +2524,14 @@ main.index-threaded {
 			.post p.line.quote {
 				color: #789922;
 			}
+			
+			a.cite-you::after {
+				display: 'inline';
+				content: ' (You)';
+			}
 		
 		
 		.thread-replies-omitted {
-			color: #ccc;
-			font-size: 90%;
 			margin: 0.25em 0.5em;
 		}
 		
@@ -2552,7 +2590,7 @@ main.index-threaded {
 					padding: 0.6em 1em 0.4em 1em;
 					margin: 0;
 					line-height: 1.8em;
-					white-space: normal;
+					white-space: nowrap;
 				}
 					.post-detail {
 						display: inline-block;
@@ -2591,6 +2629,7 @@ main.index-threaded {
 							margin: 0;
 							font-size: 1em;
 						}
+						
 						.author {
 							display: inline-block;
 							color: #117743;
@@ -2647,6 +2686,7 @@ main.index-threaded {
 						
 						.post-detail.detail-cites {
 							display: inline;
+							white-space: normal;
 						}
 							.post-detail.detail-cites a.cite {
 								font-size: 90%;
@@ -2958,7 +2998,7 @@ main.index-threaded {
 							border: 1px solid rgba(0,0,0,0.25);
 						}
 							ul.post-actions {
-								display: inline-block;
+								display: block;
 								vertical-align: top;
 								width: 100%;
 							}
@@ -3083,6 +3123,9 @@ main.index-threaded {
 								margin: 0;
 								min-height: 1.5em;
 							}
+								main.index-catalog .post-details {
+									white-space: normal;
+								}
 								main.index-catalog .post-detail {
 									display: none;
 									margin: 0;
@@ -3109,7 +3152,7 @@ main.index-threaded {
 										display: block;
 										padding: 0.2em 0.5em 0 0.5em;
 										font-size: 140%;
-										line-height: 1.2m;
+										line-height: 1.2em;
 									}
 										main.index-catalog .post-detail-item.subject {
 											display: inline;
@@ -4025,9 +4068,15 @@ body.error::before {
 			max-width: 960px;
 		}
 	
-	main#adventure {
+	main#adventure,
+	main#landing {
 		position: absolute;
 		top: 50%;
+		left: 0;
+		width: 100%;
+		text-align: center;
+	}
+	main#adventure {
 		left: 50%;
 		height: 320px;
 		width: 320px;
@@ -4052,6 +4101,7 @@ body.error::before {
 			figure.adventure-figure i.fa {
 				font-size: 240px;
 			}
+			p.landing-message,
 			figure.adventure-figure figcaption.adventure-caption {
 				display: block;
 				height: 2em;

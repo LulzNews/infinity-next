@@ -8,6 +8,7 @@ use App\Contracts\PermissionUser;
 use App\Services\ContentFormatter;
 use App\Support\Geolocation;
 use App\Support\IP;
+use App\Traits\TakePerGroup;
 use App\Traits\EloquentBinary;
 
 use Illuminate\Database\Eloquent\Collection;
@@ -26,6 +27,7 @@ use App\Events\ThreadNewReply;
 class Post extends Model {
 	
 	use EloquentBinary;
+	use TakePerGroup;
 	use SoftDeletes;
 	
 	/**
@@ -69,6 +71,8 @@ class Post extends Model {
 		'subject',
 		'author',
 		'email',
+		'password',
+		'flag_id',
 		
 		'body',
 		'body_too_long',
@@ -86,6 +90,7 @@ class Post extends Model {
 	protected $hidden = [
 		// Post Items
 		'author_ip',
+		'password',
 		'body',
 		'body_parsed',
 		'body_parsed_at',
@@ -107,7 +112,7 @@ class Post extends Model {
 	 *
 	 * @var array
 	 */
-	protected $appends = ['content_raw', 'content_html'];
+	protected $appends = ['content_raw', 'content_html', 'recently_created'];
 	
 	/**
 	 * Attributes which are automatically sent through a Carbon instance on load.
@@ -115,13 +120,6 @@ class Post extends Model {
 	 * @var array
 	 */
 	protected $dates = ['reply_last', 'bumped_last', 'created_at', 'updated_at', 'deleted_at', 'stickied_at', 'bumplocked_at', 'locked_at', 'body_parsed_at', 'author_ip_nulled_at'];
-	
-	/**
-	 * Indicates if this model is currently being prepared for update or insert.
-	 *
-	 * @var boolean
-	 */
-	public $saving = false;
 	
 	
 	public function attachments()
@@ -174,6 +172,11 @@ class Post extends Model {
 		return $this->hasOne('\App\User', 'user_id', 'updated_by');
 	}
 	
+	public function flag()
+	{
+		return $this->hasOne('\App\BoardAsset', 'board_asset_id', 'flag_id');
+	}
+	
 	public function op()
 	{
 		return $this->belongsTo('\App\Post', 'reply_to', 'post_id');
@@ -182,6 +185,11 @@ class Post extends Model {
 	public function replies()
 	{
 		return $this->hasMany('\App\Post', 'reply_to', 'post_id');
+	}
+	
+	public function replyFiles()
+	{
+		return $this->hasManyThrough('App\FileAttachment', 'App\Post', 'reply_to', 'post_id');
 	}
 	
 	public function reports()
@@ -326,6 +334,19 @@ class Post extends Model {
 	}
 	
 	/**
+	 * Checks a supplied password against the set one.
+	 *
+	 * @param  string  $password
+	 * @return bool
+	 */
+	public function checkPassword($password)
+	{
+		$hash = $this->makePassword($password);
+		
+		return (!is_null($hash) && !is_null($this->password) && $this->password === $hash);
+	}
+	
+	/**
 	 * Removes thread caches containing this post.
 	 *
 	 * @return void
@@ -427,6 +448,31 @@ class Post extends Model {
 		
 		return $checksum;
 	}
+	
+	/**
+	 * Bcrypts a password using relative information.
+	 *
+	 * @param  string  $password  The password to be set. If empty password is given, no password will be set.
+	 * @return string
+	 */
+	public function makePassword($password = null)
+	{
+		$hash = null;
+		
+		if (!!$password)
+		{
+			$hashParts = [];
+			$hashParts[] = env('APP_KEY');
+			$hashParts[] = $this->board_uri;
+			$hashParts[] = $this->reply_to_board_id ?: $this->board_id;
+			$hashParts[] = $this->password;
+			
+			$hash = bcrypt(implode($hashParts, "|"));
+		}
+		
+		return $hash;
+	}
+	
 	
 	/**
 	 * Turns the author id into a consistent color.
@@ -620,6 +666,64 @@ class Post extends Model {
 	}
 	
 	/**
+	 * Returns the fully rendered HTML of a post in the JSON output.
+	 *
+	 * @return string
+	 */
+	public function getHtmlAttribute()
+	{
+		if (!$this->trashed())
+		{
+			return \View::make('content.board.post', [
+					'board'    => $this->board,
+					'post'     => $this,
+					'op'       => false,
+					'reply_to' => $this->reply_to ?: $this->board_id,
+					'preview'  => false,
+			])->render();
+		}
+		
+		return null;
+	}
+	
+	/**
+	 * Returns the recently created flag for the JSON output.
+	 *
+	 * @return string
+	 */
+	public function getRecentlyCreatedAttribute()
+	{
+		return $this->wasRecentlyCreated;
+	}
+	
+	/**
+	 * Returns a count of current reply relationships.
+	 *
+	 * @return int
+	 */
+	public function getReplyCount()
+	{
+		return $this->getRelation('replies')->count();
+	}
+	
+	/**
+	 * Returns a count of current reply relationships.
+	 *
+	 * @return int
+	 */
+	public function getReplyFileCount()
+	{
+		$files = 0;
+		
+		foreach ($this->getRelation('replies') as $reply)
+		{
+			$files += $reply->getRelation('attachments')->count();
+		}
+		
+		return $this->reply_file_count < $files ? $this->reply_file_count : max(0, $files);
+	}
+	
+	/**
 	 * Returns a splice of the replies based on the 2channel style input.
 	 *
 	 * @param  string  $uri
@@ -723,27 +827,6 @@ class Post extends Model {
 		}
 		
 		return false;
-	}
-	
-	/**
-	 * Returns the fully rendered HTML of a post in the JSON output.
-	 *
-	 * @return string
-	 */
-	public function getHtmlAttribute()
-	{
-		if (!$this->trashed())
-		{
-			return \View::make('content.board.post', [
-					'board'    => $this->board,
-					'post'     => $this,
-					'op'       => false,
-					'reply_to' => $this->reply_to ?: $this->board_id,
-					'preview'  => false,
-			])->render();
-		}
-		
-		return null;
 	}
 	
 	/**
@@ -1444,6 +1527,11 @@ class Post extends Model {
 			);
 	}
 	
+	public function scopeAndFlag($query)
+	{
+		return $query->with('flag');
+	}
+	
 	public function scopeAndFirstAttachment($query)
 	{
 		return $query->with(['attachments' => function($query)
@@ -1495,9 +1583,9 @@ class Post extends Model {
 	
 	public function scopeForIndex($query)
 	{
-		return $query->withEverything()
-			->orderBy('post_id', 'desc');
-			//->take( $this->stickied_at ? 1 : 5 );
+		return $query->withEverythingForReplies()
+			->orderBy('post_id', 'desc')
+			->takePerGroup('reply_to', 5);
 	}
 	
 	public function scopeReplyTo($query, $replies = false)
@@ -1549,6 +1637,7 @@ class Post extends Model {
 			->andCapcode()
 			->andCites()
 			->andEditor()
+			->andFlag()
 			->andPromotedReports();
 	}
 	
@@ -1756,6 +1845,12 @@ class Post extends Model {
 			
 		}
 		
+		// Ensure we're using a valid flag.
+		if (!$this->flag_id || !$board->hasFlag($this->flag_id))
+		{
+			$this->flag_id = null;
+		}
+		
 		// Store the post in the database.
 		DB::transaction(function() use ($board, $thread)
 		{
@@ -1797,6 +1892,7 @@ class Post extends Model {
 			// We set our board_id and save the post.
 			$this->board_id  = $posts_total;
 			$this->author_id = $this->makeAuthorId();
+			$this->password  = $this->makePassword($this->password);
 			$this->save();
 			
 			// Optionally, the OP of this thread needs a +1 to reply count.
@@ -1805,9 +1901,10 @@ class Post extends Model {
 				// We're not using the Model for this because it fails under high volume.
 				
 				$threadNewValues = [
-					'updated_at'  => $thread->updated_at,
-					'reply_last'  => $this->created_at,
-					'reply_count' => $thread->replies()->count(),
+					'updated_at'       => $thread->updated_at,
+					'reply_last'       => $this->created_at,
+					'reply_count'      => $thread->replies()->count(),
+					'reply_file_count' => $thread->replyFiles()->count(),
 				];
 				
 				if (!$this->isBumpless() && !$thread->isBumplocked())
