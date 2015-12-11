@@ -38,7 +38,11 @@
 		<li class="post-detail post-country" title="{{ trans('country.' . $post->getCountryCode()) }}"><span class="flag flag-{{ $post->getCountryCode() }}"></span></li>
 	@endif
 	
-	<li class="post-detail post-postedon"><time class="post-detail-item postedon" title="{{ $post->created_at->diffForHumans() }}">{{ $post->created_at }}</time></li>
+	<li class="post-detail post-postedon">
+		<span class="post-detail-item postedon">
+			@include('widgets.time', [ 'carbon' => $post->created_at ])
+		</span>
+	</li>
 	
 	@if (!$catalog)
 		@if ($board->getConfig('postsThreadId', false))
@@ -49,7 +53,7 @@
 		
 		<li class="post-detail post-id" id="reply-{{ $post->board_id}}">
 			<a href="{!! $post->url() !!}" class="post-no" data-board_id="{!! $post->board_id !!}" data-instant>@lang('board.post_number')</a>
-			<a href="{!! $post->urlReply() !!}" class="post-reply" data-board_id="{!! $post->board_id !!}" {{ (!isset($reply_to) || !$reply_to) ? "data-instant" : "" }}>{!! $post->board_id !!}</a>
+			<a href="{!! $post->urlReply() !!}" class="post-reply" data-board_id="{!! $post->board_id !!}" {{ !$reply_to ? "data-instant" : "" }}>{!! $post->board_id !!}</a>
 		</li>
 	@endif
 	
@@ -76,6 +80,32 @@
 	<li class="post-detail detail-icon post-deleted" title="@lang('board.detail.deleted')"><i class="fa fa-remove"></i></li>
 	
 	@if (!$catalog)
+		@if (!$reply_to && $post->isOP())
+		<li class="post-detail detail-open">
+			{{-- Mobile Last 50 Open --}}
+			<a class="thread-replies-open only-mobile" href="{{ $thread->getURL('l50')}}">
+				{{ Lang::choice(
+					'board.omitted.show.open',
+					50,
+					[
+						'count' => 50,
+					]
+				) }}
+			</a>
+			
+			{{-- Desktop Last 350 Open --}}
+			<a class="thread-replies-open no-mobile" href="{{ $thread->getURL('l350')}}">
+				{{ Lang::choice(
+					'board.omitted.show.open',
+					350,
+					[
+						'count' => 350,
+					]
+				) }}
+			</a>
+		</li>
+		@endif
+		
 		<li class="post-detail detail-cites" data-no-instant>@include('content.board.post.single.cites')</li>
 	@endif
 </ul>
