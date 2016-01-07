@@ -8,7 +8,7 @@
 	ib.widgets = {};
 	
 	// Setup directional logic
-	ib.rtl = true;
+	ib.rtl = false;
 	ib.ltr = !ib.rtl;
 	
 	// Binding Widgets to DOM.
@@ -550,12 +550,16 @@
 		return false;
 	};
 	
-	// We handle widget binding in two ways.
-	// If the newer MutationObserver object exists, we can watch the DOM tree
-	// for new elmeents and bind widgets immediately as they're conceived.
+	// We handle widget binding in two ways, depending on browser support.
 	if (typeof MutationObserver === "function")
 	{
+		// If the newer MutationObserver object exists, we can watch the DOM
+		// for new elements and bind widgets immediately as they're conceived.
 		ib.observeMutation = function(records) {
+			// This method must be EXTREMELY FAST as it is called on every
+			// dom mutation as it happens.
+			ib.bindQueued();
+
 			for (var x = 0; x < records.length; ++x)
 			{
 				var nodes = records[x].addedNodes;
@@ -566,17 +570,64 @@
 					
 					if (node.attributes && node.attributes['data-widget'])
 					{
-						ib.bindElement(node)
+						ib.bindWhenLoaded(node);
 					}
 				}
+			}
+
+			if (document.readyState !== "loading")
+			{
+				ib.mutationObserver.disconnect();
+			}
+		};
+		
+		// Widgets not fully loaded are queued for binding at a later time.
+		ib.queuedElements = [];
+		
+		ib.bindWhenLoaded = function(node) {
+			if (ib.widgetLoading(node))
+			{
+				ib.queuedElements.push(node);
+			}
+			else
+			{
+				ib.bindElement(node);
+			}
+		};
+		
+		ib.widgetLoading = function(node) {
+			if (document.readyState !== "loading")
+			{
+				return false;
+			}
+			
+			while(!node.nextSibling && node.parentNode)
+			{
+				node = node.parentNode;
+			}
+			
+			return !node.nextSibling || (node.parentNode === document.body);
+		};
+		
+		ib.bindQueued = function() {
+			var queue = ib.queuedElements;
+			ib.queuedElements = [];
+
+			for (var i = 0; i < queue.length; ++i)
+			{
+				ib.bindWhenLoaded(queue[i]);
 			}
 		};
 		
 		ib.mutationObserver = new MutationObserver(ib.observeMutation);
-		ib.mutationObserver.observe(document.documentElement, {
-			childList : true,
-			subtree : true
-		});
+		ib.mutationObserver.observe(
+			document.documentElement,
+			{
+				childList : true,
+				subtree : true
+			}
+		);
+		$(document).on('ready', ib.bindQueued);
 	}
 	else
 	{

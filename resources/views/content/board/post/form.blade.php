@@ -19,6 +19,7 @@
 @endif
 	@if (!isset($post))
 	<ul class="post-menu">
+		@if ($user->canUsePassword($board))
 		<li class="menu-input menu-password">
 			{!! Form::password(
 				'password',
@@ -29,6 +30,7 @@
 					'placeholder' => trans('board.field.password'),
 			]) !!}
 		</li>
+		@endif
 		<li class="menu-icon menu-icon-minimize">
 			<span class="menu-icon-button"></span>
 			<span class="menu-icon-text">Minimize</span>
@@ -49,20 +51,6 @@
 		
 		@include('widgets.messages')
 		
-		@if ($board->canPostWithSubject($user, !!$reply_to))
-		<div class="field row-subject">
-			{!! Form::text(
-				'subject',
-				old('subject'),
-				[
-					'id'          => "subject",
-					'class'       => "field-control",
-					'maxlength'   => 255,
-					'placeholder' => trans('board.field.subject'),
-			]) !!}
-		</div>
-		@endif
-		
 		@if ($board->canPostWithAuthor($user, !!$reply_to))
 		<div class="field row-author">
 			{!! Form::text(
@@ -73,6 +61,20 @@
 					'class'       => "field-control",
 					'maxlength'   => 255,
 					'placeholder' => trans('board.field.author')
+			]) !!}
+		</div>
+		@endif
+		
+		@if ($board->canPostWithSubject($user, !!$reply_to))
+		<div class="field row-subject">
+			{!! Form::text(
+				'subject',
+				old('subject'),
+				[
+					'id'          => "subject",
+					'class'       => "field-control",
+					'maxlength'   => 255,
+					'placeholder' => trans('board.field.subject'),
 			]) !!}
 		</div>
 		@endif

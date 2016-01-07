@@ -26,6 +26,15 @@ class OptionSeeder extends Seeder {
 				$option = Option::updateOrCreate([
 					'option_name' => $slug['option_name'],
 				], $slug);
+				
+				// Insert a default site setting.
+				if ($option->wasRecentlyCreated && $slugType == "site")
+				{
+					$option->siteSetting()->create([
+						'option_name'  => $slug['option_name'],
+						'option_value' => $slug['default_value'],
+					]);
+				}
 			}
 		}
 		
@@ -139,8 +148,16 @@ class OptionSeeder extends Seeder {
 				],
 				
 				[
-					'option_name'           => "captchaEnabled",
-					'default_value'         => true,
+					'option_name'           => "attachmentThumbnailJpeg",
+					'default_value'         => 0,
+					'format'                => "onoff",
+					'data_type'             => "boolean",
+					'validation_parameters' => 'boolean'
+				],
+				
+				[
+					'option_name'           => "canary",
+					'default_value'         => false,
 					'format'                => "onoff",
 					'data_type'             => "boolean",
 					'validation_parameters' => "boolean",
@@ -544,6 +561,7 @@ class OptionGroupSeeder extends Seeder {
 				
 				'options' => [
 					'siteName',
+					'canary',
 				],
 			],
 			

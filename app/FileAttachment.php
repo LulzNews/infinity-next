@@ -12,11 +12,25 @@ class FileAttachment extends Model {
 	protected $table = 'file_attachments';
 	
 	/**
+	 * The database primary key.
+	 *
+	 * @var string
+	 */
+	protected $primaryKey = 'attachment_id';
+	
+	/**
 	 * The attributes that are mass assignable.
 	 *
 	 * @var array
 	 */
-	protected $fillable = ['post_id', 'file_id', 'filename', 'is_spoiler', 'position'];
+	protected $fillable = [
+		'post_id',
+		'file_id',
+		'filename',
+		'is_spoiler',
+		'is_deleted',
+		'position'
+	];
 	
 	/**
 	 * Indicates if Laravel should set created_at and updated_at timestamps.
@@ -58,7 +72,10 @@ class FileAttachment extends Model {
 		
 		// Fire events on post created.
 		static::created(function(FileAttachment $attachment) {
-			$attachment->storage->processAttachment($attachment);
+			if (!is_link($attachment->storage->getFullPath()))
+			{
+				$attachment->storage->processAttachment($attachment);
+			}
 		});
 	}
 	
@@ -73,6 +90,7 @@ class FileAttachment extends Model {
 	public static function getRecentImages($number = 16, $sfwOnly = true)
 	{
 		$query = static::where('is_spoiler', false)
+			->where('is_deleted', false)
 			->whereHas('storage', function($query) {
 				$query->where('has_thumbnail', true);
 			})
@@ -92,10 +110,10 @@ class FileAttachment extends Model {
 		if ($query->getQuery()->getConnection() instanceof \Illuminate\Database\PostgresConnection)
 		{
 			// PostgreSQL does not support the MySQL standards non-compliant group_by syntax.
-			// DISTINCT itself selects distinct combinations [attachment_id,file_idd, not just file_id.
+			// DISTINCT itself selects distinct combinations [attachment_id,file_id], not just file_id.
 			// We have to use raw SQL to accomplish this.
 			$query->select(
-				\DB::raw("DISTINCT ON (file_id) *")
+				\DB::raw("distinct on (file_id) *")
 			);
 			
 			$query->orderBy('file_id', 'desc');
@@ -107,5 +125,12 @@ class FileAttachment extends Model {
 		}
 		
 		return $query->get();
+	}
+	
+	public function scopeWhereForBoard($query, Board $board)
+	{
+		return $query->whereHas('post.board', function($query) use ($board) {
+			$query->where('board_uri', $board->board_uri);
+		});
 	}
 }

@@ -12,6 +12,13 @@ use Markdown;
 class ContentFormatter {
 	
 	/**
+	 * Is set to true if non-citation text is detected.
+	 *
+	 * @var bool
+	 */
+	protected $hasContent = false;
+	
+	/**
 	 * The post being parsed.
 	 *
 	 * @var \App\Post $post
@@ -127,6 +134,7 @@ class ContentFormatter {
 			
 			'enable' => [
 				"Spoiler",
+				"Underline",
 			],
 			
 			'markup' => [
@@ -169,20 +177,30 @@ class ContentFormatter {
 			// Matches |bad| but not |<span class="censored">bad</span>|.
 			$pattern = "/<span class=\\\"censored.*?<\\/span>|(?P<match>\\b{$find}\\b)/";
 			
-			$content = preg_replace_callback($pattern, function ($matches) use ($replace) {
-				if (isset($matches['match']))
-				{
-					$randBool = mt_rand(0, 1) ? "odd" : "even";
-					$randTens = mt_rand(1, 10);
+			try
+			{
+				$newContent = preg_replace_callback($pattern, function ($matches) use ($replace) {
+					if (isset($matches['match']))
+					{
+						$randBool = mt_rand(0, 1) ? "odd" : "even";
+						$randTens = mt_rand(1, 10);
+						
+						$censoredWord = strtolower(preg_replace("/[^a-zA-Z\d]/", "", $replace));
+						$censoredWord = strlen($censoredWord) ? "word-{$censoredWord}" : "";
+						
+						return "<span class=\"censored {$censoredWord} rand-{$randBool} rand-{$randTens}\">{$replace}</span>";
+					}
 					
-					$censoredWord = strtolower(preg_replace("/[^a-zA-Z\d]/", "", $replace));
-					$censoredWord = strlen($censoredWord) ? "word-{$censoredWord}" : "";
-					
-					return "<span class=\"censored {$censoredWord} rand-{$randBool} rand-{$randTens}\">{$replace}</span>";
-				}
+					return $matches[0];
+				}, $content);
 				
-				return $matches[0];
-			}, $content);
+				$content = $newContent;
+			}
+			// RegEx error
+			catch (\ErrorException $e)
+			{
+				// RegEx is malformed.
+			}
 		}
 		
 		return $content;
@@ -199,6 +217,11 @@ class ContentFormatter {
 		$content = $this->formatMarkdown($content);
 		$content = $this->formatCensors($content);
 		
+		// Determines, after parsing, if any non-citation text exists.
+		$citelessContent  = preg_replace("/(<a(?: \w+=\"[^\"]+\")* class=\"cite([^\"])*\"(?: \w+=\"[^\"]+\")*>([^<]*)<\/a>)/", "", $content);
+		$citelessContent  = trim($citelessContent);
+		$this->hasContent = strlen($citelessContent) > 0;
+		
 		return $content;
 	}
 	
@@ -211,7 +234,6 @@ class ContentFormatter {
 	protected function formatMarkdown($content)
 	{
 		$content = Markdown::config($this->options)
-			->extendBlockComplete('Quote', $this->getQuoteParser())
 			->addInlineType('>', 'Cite')
 			->addInlineType('&', 'Cite')
 			->extendInline('Cite', $this->getCiteParser())
@@ -252,6 +274,16 @@ class ContentFormatter {
 		];
 		
 		return $this->formatContent($text);
+	}
+	
+	/**
+	 * Gets the hasContent property.
+	 *
+	 * @return bool
+	 */
+	public function hasContent()
+	{
+		return $this->hasContent;
 	}
 	
 	/**
@@ -425,41 +457,6 @@ class ContentFormatter {
 			'boards' => $boards,
 			'posts'  => $posts,
 		];
-	}
-	
-	/**
-	 * Provides a closure for the Eightdown API to deal with spoilers after a quote block is complete.
-	 *
-	 * @return Closure
-	 */
-	protected function getQuoteParser()
-	{
-		$parser = $this;
-		
-		return function($Block) use ($parser)
-		{
-			$spoiler = null;
-			
-			foreach ($Block['element']['text'] as &$text)
-			{
-				// $text = str_replace(">", "&gt;", $text);
-				
-				$spoiler = (($spoiler === true || is_null($spoiler)) && preg_match('/^&gt;![ ]?(.*)/', $text, $matches));
-				
-			}
-			
-			if ($spoiler === true)
-			{
-				$Block['element']['attributes']['class'] = "spoiler";
-				
-				foreach ($Block['element']['text'] as &$text)
-				{
-					$text = preg_replace('/^&gt;!/', "", $text, 1);
-				}
-			}
-			
-			return $Block;
-		};
 	}
 	
 }

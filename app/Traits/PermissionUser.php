@@ -6,7 +6,9 @@ use App\Option;
 use App\Permission;
 use App\Post;
 use App\Role;
+use App\RoleCache;
 use App\RolePermission;
+use App\UserRole;
 use App\Contracts\PermissionUser as PermissionUserContract;
 use App\Support\IP\CIDR;
 
@@ -44,14 +46,9 @@ trait PermissionUser {
 	 */
 	public function isAccountable()
 	{
-		if (config('tor.request'))
-		{
-			dd("Tor.");
-		}
-		
 		if (!is_bool($this->accountable))
 		{
-			$this->accountable = !config('tor.request');
+			$this->accountable = true;
 		}
 		
 		return $this->accountable;
@@ -104,12 +101,14 @@ trait PermissionUser {
 	 */
 	public function canAny($permission)
 	{
-		if ($permission instanceof Permission)
+		if (!($permission instanceof Permission))
 		{
-			$permission = $permission->permission_id;
+			$permission = Permission::findOrFail($permission);
 		}
 		
-		foreach ($this->getPermissions() as $board_uri => $board_permissions)
+		$boards = $permission->getBoardsWithPermissions($this, true);
+		
+		foreach ($boards as $board_uri)
 		{
 			if ($this->getPermission($permission, $board_uri))
 			{
@@ -130,14 +129,17 @@ trait PermissionUser {
 	{
 		$boards = [];
 		
-		if ($permission instanceof Permission)
+		if (!($permission instanceof Permission))
 		{
-			$permission = $permission->permission_id;
+			$permission = Permission::findOrFail($permission);
 		}
 		
-		foreach ($this->getPermissions() as $board_uri => $board_permissions)
+		$boardsWithRights = $permission->getBoardsWithPermissions($this, false);
+		$boards = [];
+		
+		foreach ($boardsWithRights as $board_uri)
 		{
-			if (strlen($board_uri) === 0)
+			if (is_null($board_uri) || strlen($board_uri) === 0)
 			{
 				continue;
 			}
@@ -355,6 +357,16 @@ trait PermissionUser {
 	}
 	
 	/**
+	 * Can this user delete on this board with a password?
+	 *
+	 * @return boolean
+	 */
+	public function canDeletePostWithPassword(Board $board)
+	{
+		return $this->can("board.post.delete.self", $board);
+	}
+	
+	/**
 	 * Can this user delete posts across the entire site?
 	 *
 	 * @return boolean
@@ -388,6 +400,16 @@ trait PermissionUser {
 	}
 	
 	/**
+	 * Can this user edit any board's config?
+	 *
+	 * @return boolean
+	 */
+	public function canEditAnyConfig()
+	{
+		return $this->canAny("board.config");
+	}
+	
+	/**
 	 * Can this user edit this board's config?
 	 *
 	 * @return boolean
@@ -398,13 +420,14 @@ trait PermissionUser {
 	}
 	
 	/**
-	 * Can this user edit any board's config?
+	 * Can edit a post with a password?
 	 *
-	 * @return boolean
+	 * @param  \App\Board  $board
+	 * @return bool
 	 */
-	public function canEditAnyConfig()
+	public function canEditPostWithPassword(Board $board)
 	{
-		return $this->canAny("board.config");
+		return $this->can("board.post.edit.self", $board);
 	}
 	
 	/**
@@ -480,7 +503,6 @@ trait PermissionUser {
 	{
 		return $this->can('sys.config');
 	}
-	
 	
 	/**
 	 * Can this user lock this thread to replies?
@@ -569,6 +591,17 @@ trait PermissionUser {
 	}
 	
 	/**
+	 * Can remove attachments from post with password?
+	 *
+	 * @param  \App\Board  $board
+	 * @return bool
+	 */
+	public function canRemoveAttachmentWithPassword(Board $board)
+	{
+		return $this->can("board.image.delete.self", $board);
+	}
+	
+	/**
 	 * Can this user report this post?
 	 *
 	 * @return boolean
@@ -589,6 +622,37 @@ trait PermissionUser {
 	}
 	
 	/**
+	 * Can this user delete on this board?
+	 *
+	 * @return boolean
+	 */
+	public function canSpoilerAttachmentLocally(Board $board)
+	{
+		return $this->can("board.image.spoiler.other", $board);
+	}
+	
+	/**
+	 * Can spoiler/unspoiler attachments from post with password?
+	 *
+	 * @param  \App\Board  $board
+	 * @return bool
+	 */
+	public function canSpoilerAttachmentWithPassword(Board $board)
+	{
+		return $this->can("board.image.spoiler.self", $board);
+	}
+	
+	/**
+	 * Can this user delete posts across the entire site?
+	 *
+	 * @return boolean
+	 */
+	public function canSpoilerAttachmentGlobally()
+	{
+		return $this->can("board.image.spoiler.other");
+	}
+	
+	/**
 	 * Can this user sticky a thread?
 	 *
 	 * @return boolean
@@ -599,6 +663,37 @@ trait PermissionUser {
 		if (is_null($post->reply_to))
 		{
 			return $this->can("board.post.sticky", $post->board_uri);
+		}
+		
+		return false;
+	}
+	
+	/**
+	 * Can this user supply a password for any purpose?
+	 *
+	 * @param  \App\Board  $board
+	 * @return boolean
+	 */
+	public function canUsePassword(Board $board)
+	{
+		if ($this->canDeletePostWithPassword($board))
+		{
+			return true;
+		}
+		
+		if ($this->canEditPostWithPassword($board))
+		{
+			return true;
+		}
+		
+		if ($this->canRemoveAttachmentWithPassword($board))
+		{
+			return true;
+		}
+		
+		if ($this->canSpoilerAttachmentWithPassword($board))
+		{
+			return true;
 		}
 		
 		return false;
@@ -624,6 +719,17 @@ trait PermissionUser {
 	public function canViewHistory(Post $post)
 	{
 		return $this->can('board.history', $post->board_uri);
+	}
+	
+	/**
+	 * Can this user view moderator logs?
+	 *
+	 * @param  \App\Board
+	 * @return boolean
+	 */
+	public function canViewLogs(Board $board)
+	{
+		return $this->can('board.logs', $board);
 	}
 	
 	/**
@@ -700,6 +806,9 @@ trait PermissionUser {
 	 */
 	public function forgetPermissions()
 	{
+		RoleCache::where('user_id', $this->isAnonymous() ? null : $this->user_id)
+			->delete();
+		
 		switch (env('CACHE_DRIVER'))
 		{
 			case "file" :
@@ -766,24 +875,25 @@ trait PermissionUser {
 			$whitelist = false;
 		}
 		
-		foreach ($this->getPermissions() as $board_uri => $permission)
-		{
-			if ($this->canEditConfig($board_uri) === $whitelist)
-			{
-				$boardlist[] = $board_uri;
-			}
-		}
-		
+		$boardlist = $this->canInBoards('board.config');
 		$boardlist = array_unique($boardlist);
 		
+		if (empty($boardlist))
+		{
+			return collect();
+		}
+		
 		return Board::where(function($query) use ($whitelist, $boardlist) {
-				if ($whitelist)
+				if (!in_array(null, $boardlist))
 				{
-					$query->whereIn('board_uri', $boardlist);
-				}
-				else
-				{
-					$query->whereNotIn('board_uri', $boardlist);
+					if ($whitelist)
+					{
+						$query->whereIn('board_uri', $boardlist);
+					}
+					else
+					{
+						$query->whereNotIn('board_uri', $boardlist);
+					}
 				}
 			})
 			->andAssets()
@@ -851,17 +961,23 @@ trait PermissionUser {
 	 */
 	protected function getPermission($permission, $board_uri = null)
 	{
-		$permissions = $this->getPermissions();
-		
-		// Check for a localized permisison.
-		if (isset($permissions[$board_uri][$permission]))
+		if ($permission instanceof Permission)
 		{
-			return $permissions[$board_uri][$permission];
+			$permission = $permission->permission_id;
+		}
+		
+		$boardPermissions  = $this->getPermissionsForBoard($board_uri);
+		$globalPermissions = $this->getPermissionsForBoard();
+		
+		// Check for a board permisison.
+		if (isset($boardPermissions[$permission]))
+		{
+			return $boardPermissions[$permission];
 		}
 		// Check for a global permission.
-		else if (isset($permissions[null][$permission]))
+		else if (isset($globalPermissions[$permission]))
 		{
-			return $permissions[null][$permission];
+			return $globalPermissions[$permission];
 		}
 		
 		// Assume false if not explicitly set.
@@ -869,11 +985,12 @@ trait PermissionUser {
 	}
 	
 	/**
-	 * Returns permissions for all boards belonging to our current route.
+	 * Returns permissions for global+board belonging to our current route.
 	 *
+	 * @param  string|null  $board_uri
 	 * @return array
 	 */
-	public function getPermissions()
+	public function getPermissionsForBoard($board_uri = null)
 	{
 		// Default permission mask is normal.
 		$mask = "normal";
@@ -884,19 +1001,25 @@ trait PermissionUser {
 			$mask = "unaccountable";
 		}
 		
-		return $this->getPermissionsWithRoutes($mask);
+		return $this->getPermissionsWithRoutes($board_uri, $mask);
 	}
 	
 	/**
 	 * Returns permission masks for each route.
 	 * This is where permissions are interpreted.
 	 *
+	 * @param  string|null  $board_uri
 	 * @return array
 	 */
-	protected function getPermissionMasks()
+	protected function getPermissionMask($board_uri = null)
 	{
-		$permissions = [];
-		$routes      = $this->getPermissionRoutes();
+		// Get our routes.
+		$routes = $this->getPermissionRoutes();
+		
+		// Build a route name to empty array relationship.
+		$permissions = array_combine(array_keys($routes), array_map(function($n) {
+			return [];
+		}, $routes));
 		
 		// There are two kinds of permission assignments.
 		// 1. Permissions that belong to the route.
@@ -919,103 +1042,47 @@ trait PermissionUser {
 		// We only want uniques.
 		$allGroups = array_unique($allGroups);
 		
-		// Write out a monster query to pull precisely what we need to build our permission masks.
-		$allRoles = Role::where(function($query) use ($allGroups)
-			{
-				// Pull any role that belongs to our masks's route.
-				$query->whereIn('role', $allGroups);
-				
-				// If we're not anonymous, we also need directly assigned roles.
-				if (!$this->isAnonymous())
-				{
-					$query->orWhereHas('users', function($query) {
-						//$query->where( \DB::raw("`user_roles`.`user_id`"), $this->user_id);
-						$query->where("user_roles.user_id", $this->user_id);
-					});
-				}
-			})
-			// Gather our inherited roles, their permissions, and our permissions.
-			->with('inherits')
-			->with('permissions')
-			->with('inherits.permissions')
-			// Execute query
-			->get()
-			// Remove redundant roles, in case they exist.
-			->unique(function($role) {
-				return $role->{$role->getKeyName()};
-			})
-			// Finally, sort by weight, ascending.
-			->sortBy(function($role) {
-				return $role->weight;
-			});
-		
 		// In order to determine if we want to include a role in a specific mask,
 		// we must also pull a user's roles to see what is directly applied to them.
 		$userRoles = $this->getRoles()->modelKeys();
 		
-		// Okay!
-		// With our roles fresh off out the db, we can now begin to assemble the masks.
-		// Loop through each route again.
-		foreach ($routes as $branch => $roleGroups)
+		$parentRoles = Role::where('system', true)->with('permissions')->get()->getDictionary();
+		
+		// Write out a monster query to pull precisely what we need to build our permission masks.
+		$query = Role::where(function($query) use ($board_uri, $allGroups)
 		{
-			$permissions[$branch] = [];
+			$query->where(function($query) use ($board_uri) {
+				$query->orWhereNull('board_uri');
+				$query->orWhere('board_uri', $board_uri);
+			});
 			
-			// Loop through each role.
-			foreach ($allRoles as $roleIndex => $role)
+			// Pull any role that belongs to our masks's route.
+			$query->whereIn('roles.role', $allGroups);
+			
+			// If we're not anonymous, we also need directly assigned roles.
+			if (!$this->isAnonymous())
 			{
-				// Check to see if it's either directly assigned to us or in the mask's route.
-				if (in_array($role->role, $roleGroups) || in_array($role->role_id, $userRoles))
-				{
-					// This role IS applicable to this branch.
-					
-					// Create a new array for this board if required.
-					if (!isset($permissions[$branch][$role->board_uri]))
-					{
-						$permissions[$branch][$role->board_uri] = [];
-					}
-					
-					// Loop through each inherited permission and add them to the pot.
-					// Note: It may be a good idea to instead fetch this and inline it by weight.
-					if ($role->inherit_id)
-					{
-						foreach ($role->inherits->permissions as $permission)
-						{
-							$permissions[$branch][$role->board_uri][$permission->permission_id] = !!$permission->pivot->value;
-						}
-					}
-					
-					// Loop through each role's permission and set them on the respective jurisdiction.
-					foreach ($role->permissions as $permission)
-					{
-						$permissions[$branch][$role->board_uri][$permission->permission_id] = !!$permission->pivot->value;
-					}
-					
-					// Additionally, if our permission is set on the global level, we must also go into each
-					// lesser jurisdiction and unset their rule because it no longer matters.
-					if (is_null($role->board_uri))
-					{
-						foreach ($permissions[$branch] as $board_uri => $boardPermissions)
-						{
-							if ((string) $board_uri != "")
-							{
-								foreach ($boardPermissions as $boardPermission)
-								{
-									unset($permissions[$branch][$boardPermission]);
-								}
-							}
-						}
-					}
-				}
+				$query->orWhereHas('users', function($query) {
+					//$query->where( \DB::raw("`user_roles`.`user_id`"), $this->user_id);
+					$query->where("user_roles.user_id", $this->user_id);
+				});
 			}
-			// Clean up the permission mask and remove empty rulesets.
-			foreach ($permissions[$branch] as $board_uri => $boardPermissions)
+			else
 			{
-				if (!count($boardPermissions))
-				{
-					unset($permissions[$branch][$board_uri]);
-				}
+				$query->whereDoesntHave('users');
 			}
-		}
+		});
+		
+		// Gather our inherited roles, their permissions, and our permissions.
+		$query->with('permissions');
+		
+		$query->orderBy('weight');
+		
+		// Gather our inherited roles, their permissions, and our permissions.
+		// Execute query
+		$query->chunk(100, function($roles) use ($routes, $parentRoles, $userRoles, &$permissions) {
+			RoleCache::addRolesToPermissions($roles, $routes, $parentRoles, $userRoles, $permissions);
+		});
 		
 		return $permissions;
 	}
@@ -1070,39 +1137,52 @@ trait PermissionUser {
 	 * Return the user's entire permission object,
 	 * build it if nessecary.
 	 *
+	 * @param  string  $board_uri
 	 * @param  string  $route
 	 * @return array
 	 */
-	protected function getPermissionsWithRoutes($route = null)
+	protected function getPermissionsWithRoutes($board_uri = null, $route = null)
 	{
 		if (!isset($this->permissions))
 		{
-			$rememberTags    = ["user.{$this->user_id}", "permissions"];
-			$rememberTimer   = 3600;
-			$rememberKey     = "user.{$this->user_id}.permissions";
-			$rememberClosure = function()
-			{
-				return $this->getPermissionMasks();
-			};
+			$this->permissions = [];
+		}
+		
+		if (!isset($this->permissions[$route][$board_uri]))
+		{
+			$cache = RoleCache::firstOrNew([
+				'user_id'   => !$this->isAnonymous() ? $this->user_id : null,
+				'board_uri' => is_null($board_uri)  ? null : $board_uri,
+			]);
 			
-			// return $rememberClosure();
-			
-			switch (env('CACHE_DRIVER'))
+			if (!$cache->exists)
 			{
-				case "file" :
-				case "database" :
-					$this->permissions = Cache::remember($rememberKey, $rememberTimer, $rememberClosure);
-					break;
-				
-				default :
-					$this->permissions = Cache::tags($rememberTags)->remember($rememberKey, $rememberTimer, $rememberClosure);
-					break;
+				$value = $this->getPermissionMask($board_uri);
+				$cache->value = json_encode($value);
+				$cache->save();
 			}
+			else
+			{
+				$value = json_decode($cache->value, true);
+			}
+			
+			$this->permissions = array_merge_recursive($this->permissions, $value);
+			
+			if (!isset($this->permissions[$route][$board_uri]))
+			{
+				$this->permissions[$route][$board_uri] = [];
+			}
+			
 		}
 		
 		if (!is_null($route))
 		{
-			return $this->permissions[$route];
+			if (isset($this->permissions[$route][$board_uri]))
+			{
+				return $this->permissions[$route][$board_uri];
+			}
+			
+			return [];
 		}
 		
 		return $this->permissions;
@@ -1170,4 +1250,16 @@ trait PermissionUser {
 		
 		return ip_less($ip);
 	}
+	
+	/**
+	 * Setter for the accountable mask.
+	 *
+	 * @param  bool  $accountable
+	 * @return bool
+	 */
+	public function setAccountable($accountable)
+	{
+		$this->accountable = !!$accountable;
+	}
+	
 }

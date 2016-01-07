@@ -8,9 +8,12 @@ use App\PostChecksum;
 use App\Contracts\ApiController as ApiContract;
 use App\Http\Controllers\API\ApiController;
 use App\Services\UserManager;
+use App\Support\IP;
+use Carbon\Carbon;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use Auth;
+use Cache;
 use Validator;
 use View;
 
@@ -444,6 +447,9 @@ class PostRequest extends Request implements ApiContract {
 		$thread    = $this->thread;
 		$user      = $this->user;
 		
+		$ip        = new IP($this->ip());
+		$carbon    = new \Carbon\Carbon;
+		
 		$validator = $this->getValidatorInstance();
 		$messages  = $validator->errors();
 		$isReply   = $this->thread instanceof Post;
@@ -453,14 +459,11 @@ class PostRequest extends Request implements ApiContract {
 			$floodTime = site_setting('postFloodTime');
 			
 			// Check global flood.
-			$lastPost = Post::select('created_at')
-				->whereAuthorIP($this->ip())
-				->where('created_at', '>=', \Carbon\Carbon::now()->subSeconds($floodTime))
-				->first();
+			$nextPostTime = Carbon::createFromTimestamp(Cache::get('last_post_for_' . $ip->toLong(), 0) + $floodTime);
 			
-			if ($lastPost instanceof Post)
+			if ($nextPostTime->isFuture())
 			{
-				$timeDiff = ($floodTime - $lastPost->created_at->diffInSeconds()) + 1;
+				$timeDiff = $nextPostTime->diffInSeconds() + 1;
 				
 				$messages->add("flood", trans_choice("validation.custom.post_flood", $timeDiff, [
 						'time_left' => $timeDiff,
@@ -475,19 +478,16 @@ class PostRequest extends Request implements ApiContract {
 			$floodTime = site_setting('threadFloodTime');
 			
 			// Check global flood.
-			$lastThread = Post::select('created_at')
-				->whereAuthorIP($this->ip())
-				->where('created_at', '>=', \Carbon\Carbon::now()->subSeconds($floodTime))
-				->op()
-				->first();
+			$nextPostTime = Carbon::createFromTimestamp(Cache::get('last_thread_for_' . $ip->toLong(), 0) + $floodTime);
 			
-			if ($lastThread instanceof Post)
+			if ($nextPostTime->isFuture())
 			{
-				$timeDiff = ($floodTime - $lastThread->created_at->diffInSeconds()) + 1;
+				$timeDiff = $nextPostTime->diffInSeconds() + 1;
 				
 				$messages->add("flood", trans_choice("validation.custom.thread_flood", $timeDiff, [
 						'time_left' => $timeDiff,
 				]));
+				
 				$this->failedValidation($validator);
 				return;
 			}
@@ -520,9 +520,12 @@ class PostRequest extends Request implements ApiContract {
 						
 						if ($floodTimer->isFuture())
 						{
-							$messages->add("body", trans("validation.custom.post_flood", [
+							$messages->add("flood", trans("validation.custom.post_flood", [
 								'time_left' => $floodTimer->diffInSeconds(),
 							]));
+							
+							$this->failedValidation($validator);
+							return;
 						}
 					}
 				}
@@ -562,7 +565,6 @@ class PostRequest extends Request implements ApiContract {
 			
 			if(count($uploads) > 0)
 			{
-				
 				// Standard upload originality and integrity checks.
 				if (!$this->dropzone)
 				{
@@ -577,62 +579,62 @@ class PostRequest extends Request implements ApiContract {
 							]));
 						}
 					}
-				}
-				
-				if ($board->getConfig('originalityImages'))
-				{
-					foreach ($uploads as $uploadIndex => $upload)
+					
+					if ($board->getConfig('originalityImages'))
 					{
-						if (!($upload instanceof UploadedFile))
+						foreach ($uploads as $uploadIndex => $upload)
 						{
-							continue;
-						}
-						
-						if ($board->getConfig('originalityImages') == "thread")
-						{
-							if ($thread instanceof Post && $originalPost = FileStorage::checkUploadExists($upload, $board, $thread))
+							if (!($upload instanceof UploadedFile))
+							{
+								continue;
+							}
+							
+							if ($board->getConfig('originalityImages') == "thread")
+							{
+								if ($thread instanceof Post && $originalPost = FileStorage::checkUploadExists($upload, $board, $thread))
+								{
+									$validated = false;
+									$messages->add("files.{$uploadIndex}", trans("validation.custom.unoriginal_image_thread", [
+										"filename" => $upload->getClientOriginalName(),
+										"url"      => $originalPost->getURL(),
+									]));
+								}
+							}
+							else if ($originalPost = FileStorage::checkUploadExists($upload, $board))
 							{
 								$validated = false;
-								$messages->add("files.{$uploadIndex}", trans("validation.custom.unoriginal_image_thread", [
+								$messages->add("files.{$uploadIndex}", trans("validation.custom.unoriginal_image_board", [
 									"filename" => $upload->getClientOriginalName(),
 									"url"      => $originalPost->getURL(),
 								]));
 							}
 						}
-						else if ($originalPost = FileStorage::checkUploadExists($upload, $board))
+					}
+				}
+				// Dropzone hash checks.
+				else if ($board->getConfig('originalityImages'))
+				{
+					foreach ($uploads['hash'] as $uploadIndex => $upload)
+					{
+						if ($board->getConfig('originalityImages') == "thread")
+						{
+							if ($thread instanceof Post && $originalPost = FileStorage::checkHashExists($upload, $board, $thread))
+							{
+								$validated = false;
+								$messages->add("files.{$uploadIndex}", trans("validation.custom.unoriginal_image_thread", [
+									"filename" => $uploads['name'][$uploadIndex],
+									"url"      => $originalPost->getURL(),
+								]));
+							}
+						}
+						else if ($originalPost = FileStorage::checkHashExists($upload, $board))
 						{
 							$validated = false;
 							$messages->add("files.{$uploadIndex}", trans("validation.custom.unoriginal_image_board", [
-								"filename" => $upload->getClientOriginalName(),
-								"url"      => $originalPost->getURL(),
-							]));
-						}
-					}
-				}
-			}
-			// Dropzone hash checks.
-			else if ($board->getConfig('originalityImages'))
-			{
-				foreach ($uploads['hash'] as $uploadIndex => $upload)
-				{
-					if ($board->getConfig('originalityImages') == "thread")
-					{
-						if ($thread instanceof Post && $originalPost = FileStorage::checkHashExists($upload, $board, $thread))
-						{
-							$validated = false;
-							$messages->add("files.{$uploadIndex}", trans("validation.custom.unoriginal_image_thread", [
 								"filename" => $uploads['name'][$uploadIndex],
 								"url"      => $originalPost->getURL(),
 							]));
 						}
-					}
-					else if ($originalPost = FileStorage::checkHashExists($upload, $board))
-					{
-						$validated = false;
-						$messages->add("files.{$uploadIndex}", trans("validation.custom.unoriginal_image_board", [
-							"filename" => $uploads['name'][$uploadIndex],
-							"url"      => $originalPost->getURL(),
-						]));
 					}
 				}
 			}

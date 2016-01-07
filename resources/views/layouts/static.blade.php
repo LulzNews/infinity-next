@@ -12,6 +12,9 @@
 		@section('page-css')
 			<link id="page-stylesheet" rel="stylesheet" data-instant-track />
 		@show
+		
+		<link id="theme-stylesheet" rel="stylesheet" data-instant-track />
+		<style id="user-css" type="text/css"></style>
 	@show
 	
 	@yield('js')
@@ -33,7 +36,11 @@
 			
 			@section('header-inner')
 				<figure class="page-head">
-					<img id="logo" src="@yield('header-logo', asset('static/img/logo.png'))" alt="Infinity" />
+					@if (user()->isAccountable())
+					<img id="logo" src="@yield('header-logo', asset('static/img/logo.png'))" alt="{{ site_setting('siteName') }}" />
+					@else
+					<img id="logo" src="@yield('header-logo', asset('static/img/logo_tor.png'))" alt="{{ site_setting('siteName') }}" />
+					@endif
 					<figcaption class="page-details">
 						@if (!isset($hideTitles))
 							@if (array_key_exists('page-title', View::getSections()))

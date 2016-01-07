@@ -1,5 +1,6 @@
 <?php namespace App\Http\Controllers\Content;
 
+use App\Board;
 use App\FileStorage;
 use App\FileAttachment;
 
@@ -7,10 +8,15 @@ use App\Http\Controllers\Controller;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 use File;
+use Input;
 use Settings;
 use Storage;
 use Request;
 use Response;
+use Validator;
+
+use Event;
+use App\Events\AttachmentWasModified;
 
 class ImageController extends Controller {
 	
@@ -23,10 +29,228 @@ class ImageController extends Controller {
 	| 
 	*/
 	
+	const VIEW_VERIFY      = "board.verify";
+	const VIEW_VERIFY_PASS = "board.verify.password";
+	const VIEW_VERIFY_MOD  = "board.verify.mod";
+	
+	/**
+	 * Delete a post's attachment.
+	 *
+	 * @param  \App\FileAttachment  $attachment
+	 * @return Response
+	 */
+	public function getDeleteAttachment(Board $board, FileAttachment $attachment)
+	{
+		if (!$attachment->exists)
+		{
+			return abort(404);
+		}
+		
+		if (!$this->user->canDeleteGlobally()
+			&& !$this->user->canDeleteLocally($board)
+			&& !$this->user->canDeletePostWithPassword($board)
+		)
+		{
+			return abort(403);
+		}
+		
+		$scope = [
+			'board' => $board,
+			'mod'   => $this->user->canDeleteGlobally() || $this->user->canDeleteLocally($board),
+		];
+		
+		return $this->view(static::VIEW_VERIFY, $scope);
+	}
+	
+	/**
+	 * Toggle a post's spoiler status.
+	 *
+	 * @param  \App\FileAttachment  $attachment
+	 * @return Response
+	 */
+	public function getSpoilerAttachment(Board $board, FileAttachment $attachment)
+	{
+		if (!$attachment->exists)
+		{
+			return abort(404);
+		}
+		
+		if (!$this->user->canSpoilerAttachmentGlobally()
+			&& !$this->user->canSpoilerAttachmentLocally($board)
+			&& !$this->user->canSpoilerAttachmentWithPassword($board)
+		)
+		{
+			return abort(403);
+		}
+		
+		$scope = [
+			'board' => $board,
+			'mod'   => $this->user->canSpoilerAttachmentGlobally() || $this->user->canSpoilerAttachmentLocally($board),
+		];
+		
+		return $this->view(static::VIEW_VERIFY, $scope);
+		
+		
+		$attachment->is_spoiler = !$attachment->is_spoiler;
+		$attachment->save();
+		
+		Event::fire(new AttachmentWasModified($attachment));
+		
+		return redirect()->back();
+	}
+	
+	/**
+	 * Delete a post's attachment.
+	 *
+	 * @param  \App\FileAttachment  $attachment
+	 * @return Response
+	 */
+	public function postDeleteAttachment(Board $board, FileAttachment $attachment)
+	{
+		if (!$attachment->exists)
+		{
+			return abort(404);
+		}
+		
+		$input = Input::all();
+		
+		$validator = Validator::make($input, [
+			'scope'    => "required|string|in:other,self",
+			'confirm'  => "boolean|required_if:scope,other",
+			'password' => "string|required_if:scope,self"
+		]);
+		
+		if (!$validator->passes())
+		{
+			return redirect()
+				->back()
+				->withInput($input)
+				->withErrors($validator->errors());
+		}
+		
+		if ($input['scope'] == "other")
+		{
+			if ($this->user->canDeleteGlobally() || $this->user->canDeleteLocally($board))
+			{
+				$this->log('log.attachment.delete', $attachment->post, [
+					"board_uri" => $attachment->post->board_uri,
+					"board_id"  => $attachment->post->board_id,
+					"post_id"   => $attachment->post->post_id,
+					"file"      => $attachment->storage->hash,
+				]);
+			}
+			else
+			{
+				abort(403);
+			}
+		}
+		else if ($input['scope'] == "self")
+		{
+			if ($this->user->canDeletePostWithPassword($board))
+			{
+				if (!$attachment->post->checkPassword($input['password']))
+				{
+					return redirect()
+						->back()
+						->withInput($input)
+						->withErrors([
+							'password' => \Lang::trans('validation.password', [
+								'attribute' => "password",
+							])
+						]);
+				}
+			}
+		}
+		
+		$attachment->is_deleted = true;
+		$attachment->save();
+		
+		Event::fire(new AttachmentWasModified($attachment));
+		
+		
+		return redirect($attachment->post->getURL());
+	}
+	
+	/**
+	 * Delete a post's attachment.
+	 *
+	 * @param  \App\FileAttachment  $attachment
+	 * @return Response
+	 */
+	public function postSpoilerAttachment(Board $board, FileAttachment $attachment)
+	{
+		if (!$attachment->exists)
+		{
+			return abort(404);
+		}
+		
+		$input = Input::all();
+		
+		$validator = Validator::make($input, [
+			'scope'    => "required|string|in:other,self",
+			'confirm'  => "boolean|required_if:scope,other",
+			'password' => "string|required_if:scope,self"
+		]);
+		
+		if (!$validator->passes())
+		{
+			return redirect()
+				->back()
+				->withInput($input)
+				->withErrors($validator->errors());
+		}
+		
+		if ($input['scope'] == "other")
+		{
+			if ($this->user->canDeleteGlobally() || $this->user->canDeleteLocally($board))
+			{
+				$this->log(
+					!$attachment->is_spoiler ? 'log.attachment.spoiler' : 'log.attachment.unspoiler',
+					$attachment->post,
+					[
+						"board_uri" => $attachment->post->board_uri,
+						"board_id"  => $attachment->post->board_id,
+						"post_id"   => $attachment->post->post_id,
+						"file"      => $attachment->storage->hash,
+					]
+				);
+			}
+			else
+			{
+				abort(403);
+			}
+		}
+		else if ($input['scope'] == "self")
+		{
+			if ($this->user->canDeletePostWithPassword($board))
+			{
+				if (!$attachment->post->checkPassword($input['password']))
+				{
+					return redirect()
+						->back()
+						->withInput($input)
+						->withErrors([
+							'password' => \Lang::trans('validation.password', [
+								'attribute' => "password",
+							])
+						]);
+				}
+			}
+		}
+		
+		$attachment->is_spoiler = !$attachment->is_spoiler;
+		$attachment->save();
+		
+		Event::fire(new AttachmentWasModified($attachment));
+		
+		
+		return redirect($attachment->post->getURL());
+	}
+	
 	/**
 	 * Delivers an image.
 	 *
-	 * @param  string  $hash
+	 * @param  \App\FileAttachment  $attachment
 	 * @param  string  $filename
 	 * @param  boolean  $thumbnail
 	 * @return Response
@@ -38,18 +262,50 @@ class ImageController extends Controller {
 			die();
 		}
 		
-		if ($hash !== false && $filename !== false)
+		$FileStorage = null;
+		
+		if (is_string($hash) && is_string($filename))
 		{
-			$FileStorage     = FileStorage::getHash($hash);
+			$FileStorage = FileStorage::getHash($hash);
+		}
+		
+		if ($FileStorage instanceof FileStorage)
+		{
 			$storagePath     = !$thumbnail ? $FileStorage->getPath()     : $FileStorage->getPathThumb();
 			$storagePathFull = !$thumbnail ? $FileStorage->getFullPath() : $FileStorage->getFullPathThumb();
 			$cacheTime       =  31536000; /// 1 year
 			
-			if ($FileStorage instanceof FileStorage && Storage::exists($storagePath))
+			if ($thumbnail && (!file_exists($storagePathFull) || is_dir($storagePathFull)))
+			{
+				if (is_dir($storagePathFull))
+				{
+					unlink($storagePathFull);
+				}
+				
+				$FileStorage->processThumb();
+			}
+			
+			if (is_link($storagePathFull))
+			{
+				if (!is_readable($storagePathFull))
+				{
+					abort(500, "Symlink file is unreadable.");
+				}
+				
+				$storageExists = file_exists($storagePathFull);
+			}
+			else
+			{
+				$storageExists = Storage::exists($storagePath);
+			}
+			
+			$storageSize = filesize($storagePathFull);
+			
+			if ($storageExists)
 			{
 				ini_set("zlib.output_compression", "Off");
 				
-				$responseSize    = Storage::size($storagePath);
+				$responseSize    = $storageSize;
 				$responseCode    = 200;
 				$responseHeaders = [
 					'Cache-Control'        => "public, max-age={$cacheTime}, pre-check={$cacheTime}",
@@ -196,14 +452,48 @@ class ImageController extends Controller {
 	}
 	
 	/**
+	 * Delivers a file from an attachment.
+	 *
+	 * @param  \App\FileAttachment  $attachment
+	 * @param  string  $filename
+	 */
+	public function getImageFromAttachment(FileAttachment $attachment, $filename = false)
+	{
+		return $this->getImage($attachment->storage->hash, $filename);
+	}
+	
+	/**
+	 * Delivers a file from a hash.
+	 *
+	 * @param  string  $hash
+	 * @param  string  $filename
+	 */
+	public function getImageFromHash($hash = false, $filename = false)
+	{
+		return $this->getImage($hash, $filename, false);
+	}
+	
+	/**
 	 * Delivers a file's thumbnail by rerouting the request to getFile with an optional parameter set.
 	 *
-	 * @param  $string  $hash
+	 * @param  \App\FileAttachment  $attachment
 	 * @param  $string  $filename
 	 * @return Response
 	 */
-	public function getThumbnail($hash = false, $filename = false)
+	public function getThumbnailFromAttachment(FileAttachment $attachment, $filename = false)
+	{
+		return $this->getImage($attachment->storage->hash, $filename, true);
+	}
+	
+	/**
+	 * Delivers a file from a hash.
+	 *
+	 * @param  string  $hash
+	 * @param  string  $filename
+	 */
+	public function getThumbnailFromHash($hash = false, $filename = false)
 	{
 		return $this->getImage($hash, $filename, true);
 	}
+	
 }

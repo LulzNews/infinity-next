@@ -26,14 +26,16 @@ class RouteServiceProvider extends ServiceProvider {
 	public function boot(Router $router)
 	{
 		// Sets up our routing tokens.
-		$router->pattern('board', Board::URI_PATTERN);
-		$router->pattern('id',   '[0-9]\d*');
+		$router->pattern('attachment', '[0-9]\d*');
+		$router->pattern('board',      Board::URI_PATTERN);
+		$router->pattern('id',         '[0-9]\d*');
 		
-		$router->model('ban',    '\App\Ban');
-		$router->model('board',  '\App\Board');
-		$router->model('post',   '\App\Post');
-		$router->model('report', '\App\Report');
-		$router->model('role',   '\App\Role');
+		$router->model('attachment', '\App\FileAttachment');
+		$router->model('ban',        '\App\Ban');
+		$router->model('board',      '\App\Board');
+		$router->model('post',       '\App\Post');
+		$router->model('report',     '\App\Report');
+		$router->model('role',       '\App\Role');
 		
 		$router->bind('user', function($value, $route) {
 			if (is_numeric($value))
@@ -44,6 +46,27 @@ class RouteServiceProvider extends ServiceProvider {
 			{
 				return \App\User::find($matches['id']);
 			}
+		});
+		
+		$router->bind('board', function($value, $route) {
+			$board = Board::getBoardForRouter(
+				$this->app,
+				$value
+			);
+			
+			if ($board)
+			{
+				$board->applicationSingleton = true;
+				return $board;
+			}
+			
+			return abort(404);
+		});
+		
+		$router->bind('attachment', function($value, $route) {
+			return \App\FileAttachment::where('is_deleted', false)
+				->with('storage')
+				->find($value);
 		});
 		
 		$router->bind('role', function($value, $route) {
@@ -60,24 +83,26 @@ class RouteServiceProvider extends ServiceProvider {
 		$router->bind('post_id', function($value, $route) {
 			$board = $route->getParameter('board');
 			
+			if (!($board instanceof Board))
+			{
+				$board = $this->app->make("\App\Board");
+			}
+			
 			if (is_numeric($value) && $board instanceof Board)
 			{
 				return $board->getThreadByBoardId($value);
 			}
 		});
 		
-		
 		// Binds a matched instance of a {board} as a singleton instance.
 		$router->matched(function($route, $request) {
-			// Binds the board to the application if it exists.
 			$board = $route->getParameter('board');
 			
 			if ($board instanceof Board && $board->exists)
 			{
-				$board->applicationSingleton = true;
-				//$this->app->instance("\App\Board", $board);
+				// Binds the board to the application if it exists.
 				$this->app->singleton("\App\Board", function($app) use ($board) {
-					return $board->load(['assets', 'assets.storage', 'settings']);
+					return $board;
 				});
 			}
 			

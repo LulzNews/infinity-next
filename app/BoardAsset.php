@@ -25,11 +25,25 @@ class BoardAsset extends Model implements PseudoEnumContract {
 	protected $primaryKey = 'board_asset_id';
 	
 	/**
+	 * The attributes that should be casted to native types.
+	 *
+	 * @var array
+	 */
+	protected $casts = [
+		'board_asset_id'  => 'int',
+	];
+	
+	/**
 	 * The attributes that are mass assignable.
 	 *
 	 * @var array
 	 */
-	protected $fillable = ['board_uri', 'file_id', 'asset_type', 'asset_name'];
+	protected $fillable = [
+		'board_uri',
+		'file_id',
+		'asset_type',
+		'asset_name'
+	];
 	
 	/**
 	 * Psuedo-enum attributes and their permissable values.
@@ -52,6 +66,12 @@ class BoardAsset extends Model implements PseudoEnumContract {
 		return $this->belongsTo('\App\Board', 'board_uri');
 	}
 	
+	
+	public function flagPosts()
+	{
+		return $this->hasMany('\App\Post', 'flag_id', 'file_id');
+	}
+	
 	public function storage()
 	{
 		return $this->belongsTo('\App\FileStorage', 'file_id');
@@ -70,7 +90,11 @@ class BoardAsset extends Model implements PseudoEnumContract {
 	
 	public function getURL()
 	{
-		return url("{$this->board_uri}/file/{$this->storage->hash}/banner.png");
+		return route('static.file.hash', [
+			'board'    => $this->board,
+			'hash'     => $this->storage->hash,
+			'filename' => "banner.png"
+		]);
 	}
 	
 	/**

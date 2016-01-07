@@ -1,8 +1,8 @@
-@include('content.board.post', [
-	'board' => $board,
-	'post'  => $thread,
-	'multiboard' => isset($multiboard) ? $multiboard : false,
-])
+{!! $thread->toHTML(
+		false,
+		isset($multiboard) ? $multiboard : false,
+		false
+) !!}
 
 @if (!$thread->reply_to)
 @spaceless
@@ -28,24 +28,24 @@
 		),
 	]
 ) }}</span>
-{{-- JavaScript Expand Inline --}}
+{{-- JavaScript Expand Inline
 <a class="thread-replies-expand no-mobile require-js" href="#">{{ Lang::get(
 	'board.omitted.show.inline'
-) }}</a>
+) }}</a> --}}
 </div>
 @endif
 
+@if (!isset($catalog) || !$catalog)
 <ul class="thread-replies">
 @foreach ($thread->getReplies() as $reply)
 	<li class="thread-reply">
 		<article class="reply">
 			@endspaceless
-			@include('content.board.post', [
-				'board'      => $board,
-				'post'       => $reply,
-				'reply_to'   => $thread,
-				'multiboard' => isset($multiboard) ? $multiboard : false,
-			])
+			{!! $reply->toHTML(
+					false,
+					isset($multiboard) ? $multiboard : false,
+					false
+			) !!}
 			@spaceless
 		</article>
 	</li>
@@ -55,5 +55,6 @@
 	@include('widgets.thread-autoupdater')
 	@endif
 </ul>
+@endif
 @endspaceless
 @endif

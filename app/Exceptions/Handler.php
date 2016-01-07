@@ -51,6 +51,13 @@ class Handler extends ExceptionHandler {
 			case "ErrorException" :
 				$errorView = "errors.500";
 				break;
+				
+			case "Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException" :
+				return abort(400);
+			
+			case "Predis\Connection\ConnectionException" :
+				$errorView = "errors.500_predis";
+				break;
 			
 			default :
 				$errorView = false;

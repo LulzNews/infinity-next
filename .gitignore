@@ -1,5 +1,8 @@
 /node_modules
 /packages
 /vendor
+/storage/infinity.import
 .env
 composer.lock
+dump.rdb
+

@@ -30,6 +30,9 @@ return [
 		
 		'report'            => "Report post",
 		'report+global'     => "Report post to global staff",
+		
+		'verify_pass'       => "Verify Action with Password",
+		'verify_mod'        => "Verify Action as Moderator",
 	],
 	
 	// Form Fields
@@ -39,7 +42,6 @@ return [
 		'author'          => "Author",
 		'email'           => "Email",
 		'capcode'         => "No capcode",
-		'download'        => "Download",
 		'flag'            => "Flag",
 		'password'        => "Password",
 		
@@ -53,6 +55,19 @@ return [
 		'expires-days'    => "Days",
 		'expires-hours'   => "Hours",
 		'expires-minutes' => "Minutes",
+		
+		'expand'          => "Expand",
+		'expand-all'      => "Expand All",
+		'collapse'        => 'collapse',
+		'collapse-all'    => "Collapse All",
+		'download'        => "Download",
+		'download-all'    => "Download All",
+		'unspoiler'       => "Unspoiler",
+		'unspoiler-all'   => "Unspoiler All",
+		'spoiler'         => "Spoiler",
+		'spoiler-all'     => "Spoiler All",
+		'remove'          => "Remove",
+		'remove-all'      => "Remove All",
 	],
 	
 	// Form Submit Buttons
@@ -69,6 +84,8 @@ return [
 		
 		'report'            => "Report post",
 		'report+global'     => "Report post to global staff",
+		'verify_mod'        => "Confirm Moderator Action",
+		'verify_password'   => "Submit Password",
 	],
 	
 	/**
@@ -123,6 +140,8 @@ return [
 		'locked'     => "Locked",
 		'deleted'    => "Deleted",
 		'history'    => "View author history",
+		
+		'catalog_stats' => "R: :reply_count / F: :file_count / P: :page",
 		
 		// Translator's Note:
 		// This is a bit silly. It just means the poster
@@ -225,6 +244,24 @@ return [
 		],
 	],
 	
+	/**
+	 * Post Histories
+	 */
+	'history' => [
+		'title' => "Post History for :ip",
+		
+		// Translator's Note:
+		// This is a special quote from UNIX-based operating systems.
+		// When accessing another user's account, you receive this message the
+		// first time you do so. This mesage has a sort of reverence.
+		// Please preverse whitespace (spaces) and my \n. Do not use <br />.
+		'lecture' => "We trust you have received the usual lecture from the local System" .
+			"\nAdministrator. It usually boils down to these three things:" .
+			"\n" .
+			"\n    #1) Respect the privacy of others." .
+			"\n    #2) Think before you type." .
+			"\n    #3) With great power comes great responsibility.",
+	],
 	
 	/**
 	 * Public Config
@@ -238,6 +275,13 @@ return [
 		],
 	],
 	
+	/**
+	 * Verification
+	 */
+	'verify'     => [
+		'title' => "Verify Action",
+		'mod'   => "Moderator actions are recorded in the logs.",
+	],
 	
 	/**
 	 * Other

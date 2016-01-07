@@ -22,6 +22,12 @@ class RoleSeeder extends Seeder {
 		
 		$this->runBoards();
 		
+		$deleted = UserRole::whereDoesntHave('role')->forceDelete();
+		
+		if ($deleted > 0)
+		{
+			$this->command->warn("Dropped {$deleted} user roles where the role did not exist.");
+		}
 		
 		Schema::table('posts', function(Blueprint $table)
 		{
@@ -100,14 +106,18 @@ class RoleSeeder extends Seeder {
 				'system'     => true,
 			])->first();
 			
-			if ($role)
+			if (!$role || !$role->exists || $role->role_id != $slug['role_id'])
 			{
-				$role->forceDelete();
+				if ($role)
+				{
+					$role->forceDelete();
+					Role::forceDelete($slug['role_id']);
+				}
+				
+				$role = new Role($slug);
+				$role->role_id = $slug['role_id'];
+				$role->save();
 			}
-			
-			$role = new Role($slug);
-			$role->role_id = $slug['role_id'];
-			$role->save();
 		}
 	}
 	
@@ -116,20 +126,36 @@ class RoleSeeder extends Seeder {
 		$this->command->comment("\tInserting board owner roles.");
 		$boardRole = $this->slugs()[Role::ID_OWNER];
 		
-		foreach (Board::get() as $board)
+		Board::chunk(50, function($boards)
 		{
-			$roleModel = Role::updateOrCreate([
-				'role'       => $boardRole['role'],
-				'board_uri'  => $board->board_uri,
-				'caste'      => $boardRole['caste'],
-			], [
-				'name'       => $boardRole['name'],
-				'capcode'    => $boardRole['capcode'],
-				'inherit_id' => Role::ID_OWNER,
-				'system'     => false,
-				'weight'     => $boardRole['weight'] + 5,
-			]);
-		}
+			foreach ($boards as $board)
+			{
+				$boardRole = $board->getOwnerRole();
+				
+				if (!$boardRole)
+				{
+					$boardRole = Role::getOwnerRoleForBoard($board);
+					$this->command->line("\t/{$board->board_uri}/ has no owner role.");
+				}
+				
+				$roleModel = Role::firstOrCreate([
+					'role'       => $boardRole['role'],
+					'board_uri'  => $board->board_uri,
+					'caste'      => $boardRole['caste'],
+				]);
+				
+				if ($roleModel->wasRecentlyCreated)
+				{
+					$roleModel->fill([
+						'name'       => $boardRole['name'],
+						'capcode'    => $boardRole['capcode'],
+						'inherit_id' => Role::ID_OWNER,
+						'system'     => false,
+						'weight'     => $boardRole['weight'] + 5,
+					])->save();
+				}
+			}
+		});
 	}
 	
 	private function slugs()
@@ -245,22 +271,32 @@ class UserRoleSeeder extends Seeder {
 			];
 		}
 		
-		foreach (Board::get() as $board)
+		Board::with('operator', 'roles')->has('operator')->chunk(50, function($boards) use (&$userRoles)
 		{
-			$ownerRole = $board->getOwnerRole();
-			
-			if ($ownerRole)
+			foreach ($boards as $board)
 			{
+				$boardRole = $board->getOwnerRole();
+				
+				// Drops all board owner user roles where the user isn't a board operator.
+				$removed = UserRole::whereHas('role', function($query) use ($boardRole) {
+						$query->where('role_id', $boardRole->role_id);
+					})
+					->whereHas('user', function($query) use ($board) {
+						$query->where('user_id', "<>", $board->operated_by);
+					})
+					->forceDelete();
+				
+				if ($removed > 0)
+				{
+					$this->command->line("\tRemoved {$removed} pretenders from /{$board->board_uri}/.");
+				}
+				
 				$userRoles[] = [
 					'user_id' => $board->operated_by,
-					'role_id' => $ownerRole->role_id,
+					'role_id' => $boardRole->role_id,
 				];
 			}
-			else
-			{
-				$this->command->line("\t/{$board->board_uri}/ has no owner role.");
-			}
-		}
+		});
 		
 		foreach ($userRoles as $userRole)
 		{
@@ -343,6 +379,7 @@ class RolePermissionSeeder extends Seeder {
 				"board.image.upload.new",
 				"board.image.upload.old",
 				"board.image.delete.self",
+				"board.image.spoiler.self",
 				"board.image.spoiler.upload",
 				"board.post.create.thread",
 				"board.post.create.reply",
@@ -374,6 +411,7 @@ class RolePermissionSeeder extends Seeder {
 				"board.image.delete.self",
 				"board.image.delete.other",
 				"board.image.spoiler.upload",
+				"board.image.spoiler.self",
 				"board.image.spoiler.other",
 				"board.post.create.thread",
 				"board.post.create.reply",

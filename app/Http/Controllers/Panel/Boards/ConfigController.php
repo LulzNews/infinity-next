@@ -11,6 +11,7 @@ use App\Http\Requests\BoardConfigRequest;
 use App\Http\Controllers\Panel\PanelController;
 use App\Validators\ComparisonValidator;
 
+use Carbon\Carbon;
 use DB;
 use Input;
 use Request;
@@ -386,9 +387,9 @@ class ConfigController extends PanelController {
 		$optionGroups = $request->getBoardOptions();
 		$settings     = [];
 		
-		foreach ($optionGroups as &$optionGroup)
+		foreach ($optionGroups as $optionGroup)
 		{
-			foreach ($optionGroup->options as &$option)
+			foreach ($optionGroup->options as $option)
 			{
 				$setting = BoardSetting::firstOrNew([
 					'option_name'  => $option->option_name,
@@ -440,6 +441,8 @@ class ConfigController extends PanelController {
 		$board->is_overboard = isset($input['boardBasicOverboard']) && !!$input['boardBasicOverboard'];
 		$board->is_indexed   = isset($input['boardBasicIndexed']) && !!$input['boardBasicIndexed'];
 		$board->is_worksafe  = isset($input['boardBasicWorksafe']) && !!$input['boardBasicWorksafe'];
+		$board->setRelation('settings', $settings);
+		$board->updated_at   = Carbon::now();
 		$board->save();
 		
 		Event::fire(new BoardWasModified($board));

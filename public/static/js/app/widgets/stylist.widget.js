@@ -11,20 +11,56 @@
 	// Configuration options
 	var options = {
 		theme : {
-			default : "next.css",
+			default : "",
 			type    : "select",
 			values  : [
-				"next.css",
+				"",
 				"next-yotsuba.css",
-				"day-after-tomorrow.css",
-				"kappa.css",
-				"tomorrow-kappa.css",
-			]
+				"next-dark.css",
+				"next-tomorrow.css",
+				"kappa-burichan.css",
+			],
+			onChange : function(event) {
+				var setting = event.data.setting.get();
+				var domObj  = document.getElementById('theme-stylesheet');
+				
+				if (setting)
+				{
+					domObj.href = window.app.url + "/static/css/skins/" + setting;
+				}
+				else
+				{
+					domObj.href = "";
+				}
+			},
+			onUpdate : function(event) {
+				var setting = event.data.setting.get();
+				var domObj  = document.getElementById('theme-stylesheet');
+				
+				if (setting)
+				{
+					domObj.href = window.app.url + "/static/css/skins/" + setting;
+				}
+				else
+				{
+					domObj.href = "";
+				}
+			}
 		},
 		
 		css : {
 			default : "",
-			type    : "textarea"
+			type    : "textarea",
+			onChange : function(event) {
+				var setting = event.data.setting.get();
+				var domObj  = document.getElementById('user-css');
+				domObj.innerHTML = setting;
+			},
+			onUpdate : function(event) {
+				var setting = event.data.setting.get();
+				var domObj  = document.getElementById('user-css');
+				domObj.innerHTML = setting;
+			}
 		}
 	};
 	

@@ -154,6 +154,11 @@ class Board extends Model {
 		return $this->hasMany('\App\Post', 'board_uri');
 	}
 	
+	public function attachments()
+	{
+		return $this->hasManyThrough('App\FileAttachment', 'App\Post', 'board_uri', 'post_id');
+	}
+	
 	public function logs()
 	{
 		return $this->hasMany('\App\Log', 'board_uri');
@@ -164,9 +169,9 @@ class Board extends Model {
 		return $this->belongsTo('\App\User', 'operated_by', 'user_id');
 	}
 	
-	public function owner()
+	public function creator()
 	{
-		return $this->belongsTo('\App\User', 'owned_by', 'user_id');
+		return $this->belongsTo('\App\User', 'created_by', 'user_id');
 	}
 	
 	public function threads()
@@ -186,7 +191,7 @@ class Board extends Model {
 	
 	public function staffAssignments()
 	{
-		return $this->hasManyThrough('App\UserRole', 'App\Role', 'board_uri', 'user_id');
+		return $this->hasManyThrough('App\UserRole', 'App\Role', 'board_uri', 'role_id');
 	}
 	
 	public function stats()
@@ -318,6 +323,10 @@ class Board extends Model {
 		return $user->canPostInLockedThreads($this);
 	}
 	
+	public function clearCachedModel()
+	{
+		return Cache::forget("board.{$this->board_uri}");
+	}
 	
 	public function clearCachedThreads()
 	{
@@ -490,6 +499,37 @@ class Board extends Model {
 	}
 	
 	/**
+	 * Fixes post totals on all boards.
+	 *
+	 * @static
+	 * @return void
+	 */
+	public static function fixPostsTotal()
+	{
+		static::chunk(50, function($boards)
+		{
+			foreach ($boards as $board)
+			{
+				$last_post     = Post::where('board_uri', $board->board_uri)->select('board_id')->withTrashed()->orderBy('board_id', 'desc')->first();
+				$last_board_id = $last_post ? (int) $last_post->board_id: 0;
+				$posts_total   = (int) $board->posts_total;
+				
+				if (max( (int) $posts_total, (int) $last_board_id ) > $posts_total)
+				{
+					echo "\n{$board->board_uri} -- {$posts_total} < {$last_board_id}!!!!!!!!!\n\n";
+				}
+				else
+				{
+					echo $board->board_uri . " -- {$posts_total} >= {$last_board_id}\n";
+				}
+				
+				$board->posts_total = max( (int) $posts_total, (int) $last_board_id );
+				$board->save();
+			}
+		});
+	}
+	
+	/**
 	 * Gets the default album art for an audio file.
 	 *
 	 * @return string  url
@@ -538,8 +578,6 @@ class Board extends Model {
 	 */
 	public function getBannedImages()
 	{
-		$this->load('assets', 'assets.storage');
-		
 		return $this->assets
 			->where('asset_type', "board_banned");
 	}
@@ -574,6 +612,10 @@ class Board extends Model {
 		{
 			return $banners->random()->getURL();
 		}
+		else if (!user()->isAccountable())
+		{
+			return asset("static/img/logo_tor.png");
+		}
 		else if (!$this->isWorksafe())
 		{
 			return asset("static/img/logo_yotsuba.png");
@@ -593,8 +635,6 @@ class Board extends Model {
 	 */
 	public function getBanners()
 	{
-		$this->load('assets', 'assets.storage');
-		
 		return $this->assets
 			->where('asset_type', "board_banner");
 	}
@@ -691,8 +731,6 @@ class Board extends Model {
 	 */
 	public function getFlags()
 	{
-		$this->load('assets', 'assets.storage');
-		
 		return $this->assets
 			->where('asset_type', "board_flags")
 			->sortBy('asset_name');
@@ -798,7 +836,7 @@ class Board extends Model {
 	
 	public function getSpoilerUrl()
 	{
-		return asset("static/img/assets/spoiler.png");
+		return $this->getAssetUrl('file_spoiler');
 	}
 	
 	public function getStaff()
@@ -808,12 +846,25 @@ class Board extends Model {
 			->where('board_uri', $this->board_uri)
 			->get();
 		
+		$roles = [];
 		foreach ($this->roles as $role)
 		{
 			foreach ($role->users as $user)
 			{
 				$staff[$user->user_id] = $user;
+				
+				if (!isset($roles[$user->user_id]))
+				{
+					$roles[$user->user_id] = [];
+				}
+				
+				$roles[$user->user_id][] = $role;
 			}
+		}
+		
+		foreach ($roles as $user_id => $role)
+		{
+			$staff[$user_id]->setRelation('roles', collect($role));
 		}
 		
 		return $staff;
@@ -954,7 +1005,7 @@ class Board extends Model {
 	 */
 	public function getURL($route = "")
 	{
-		return url("{$this->board_uri}/{$route}") . "/";
+		return url("{$this->board_uri}/{$route}");
 	}
 	
 	public function getURLForRoles($route = "add")
@@ -1078,7 +1129,7 @@ class Board extends Model {
 			
 			if ($style == "" && !$this->isWorksafe())
 			{
-				$style = file_get_contents(public_path() . "/static/css/skins/yotsuba.css");
+				$style = file_get_contents(public_path() . "/static/css/skins/next-yotsuba.css");
 			}
 			
 			return $style;
@@ -1092,7 +1143,39 @@ class Board extends Model {
 	 */
 	public function getStylesheetUrl()
 	{
-		return $this->getUrl("style.css");
+		return $this->getUrl("style_{$this->updated_at->timestamp}.css");
+	}
+	
+	/**
+	 * Returns a single board with all data, using the cache if possible.
+	 *
+	 * @static
+	 * @param  App       $app
+	 * @param  string    $board_ur
+	 * @return \App\Board
+	 */
+	public static function getBoardForRouter($app, $board_uri)
+	{
+		$rememberTimer   = 60;
+		$rememberKey     = "board.{$board_uri}";
+		$rememberClosure = function() use ($app, $board_uri) {
+			$board = static::find($board_uri);
+			
+			if ($board instanceof Board && $board->exists)
+			{
+				return $board->load([
+					'assets',
+					'assets.storage',
+					'settings'
+				]);
+			}
+			
+			return null;
+		};
+		
+		$board = Cache::remember($rememberKey, $rememberTimer, $rememberClosure);
+		
+		return $board;
 	}
 	
 	/**
@@ -1114,7 +1197,11 @@ class Board extends Model {
 			return static::select('board_uri', 'title', 'description', 'posts_total', 'last_post_at', 'is_indexed', 'is_worksafe')
 				->with([
 					'tags',
-					'settings',
+					'settings' => function($query) {
+						$query->whereIn('option_name', [
+							"boardLanguage",
+						]);
+					},
 					'stats' => function($query) {
 						$query->where('stats_time', '>=', Carbon::now()->minute(0)->second(0)->subDays(7));
 					},
@@ -1148,7 +1235,7 @@ class Board extends Model {
 		}
 		else
 		{
-			return Post::getForThreadView($this->board_uri, $board_id);
+			return Post::getForThreadView($this, $board_id);
 		}
 		
 		return null;
@@ -1163,29 +1250,32 @@ class Board extends Model {
 	
 	public function getThreadsForCatalog($page = 0)
 	{
-		$postsPerPage    = 100;
+		$postsPerCatalog = 150;
+		$postsPerPage    = $this->getConfig('postsPerPage', 10);
 		
 		$rememberTags    = ["board.{$this->board_uri}.pages"];
 		$rememberTimer   = 30;
 		$rememberKey     = "board.{$this->board_uri}.catalog";
-		$rememberClosure = function() use ($page, $postsPerPage) {
+		$rememberClosure = function() use ($page, $postsPerCatalog, $postsPerPage) {
 			$threads = $this->threads()
 				->op()
-				->andAttachments()
-				->andCapcode()
-				->andCites()
+				->withEverythingForReplies()
 				->orderBy('stickied', 'desc')
 				->orderBy('bumped_last', 'desc')
-				->skip($postsPerPage * ( $page - 1 ))
-				->take($postsPerPage)
+				->skip($postsPerCatalog * ( $page - 1 ))
+				->take($postsPerCatalog)
 				->get();
 			
-			// Limit the number of attachments to one.
-			foreach ($threads as $thread)
+			foreach ($threads as $threadIndex => $thread)
 			{
 				//$thread->body_parsed = $thread->getBodyFormatted();
 				$thread->setRelation('board', $this);
-				$thread->attachments = $thread->attachments->splice(0, 1);
+				$thread->setRelation('replies', collect());
+				
+				$thread->page_number = floor($threadIndex / $postsPerPage) + 1;
+				$thread->reply_files = "?";
+				
+				$thread->prepareForCache();
 			}
 			
 			return $threads;
@@ -1241,7 +1331,10 @@ class Board extends Model {
 				foreach($thread->replies as $reply)
 				{
 					$reply->setRelation('board', $this);
+					$reply->setRelation('attachments', $reply->attachments->reverse());
 				}
+				
+				$thread->prepareForCache();
 			}
 			
 			return $threads;
@@ -1316,6 +1409,14 @@ class Board extends Model {
 		
 		$role = Role::getOwnerRoleForBoard($this);
 		
+		if (!$role->wasRecentlyCreated)
+		{
+			UserRole::where('role_id', $role->role_id)->delete();
+		}
+		
+		$this->operated_by = $user->user_id;
+		$this->save();
+		
 		return UserRole::create([
 			'user_id' => $user->user_id,
 			'role_id' => $role->role_id,
@@ -1324,7 +1425,7 @@ class Board extends Model {
 	
 	public function scopeAndAssets($query)
 	{
-		return $query->with('assets');
+		return $query->with('assets', 'assets.storage');
 	}
 	
 	public function scopeAndCreator($query)

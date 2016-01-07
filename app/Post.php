@@ -36,7 +36,7 @@ class Post extends Model {
 	 * @var string
 	 */
 	protected $table = 'posts';
-
+	
 	/**
 	 * The primary key that is used by ::get()
 	 *
@@ -50,6 +50,8 @@ class Post extends Model {
 	 * @var array
 	 */
 	protected $casts = [
+		'board_id'  => 'int',
+		'reply_to'  => 'int',
 		'author_ip' => 'ip',
 	];
 	
@@ -66,6 +68,8 @@ class Post extends Model {
 		'reply_last',
 		'bumped_last',
 		
+		'created_at',
+		'updated_at',
 		'stickied',
 		'stickied_at',
 		'bumplocked_at',
@@ -79,11 +83,13 @@ class Post extends Model {
 		'capcode_id',
 		'subject',
 		'author',
+		'insecure_tripcode',
 		'email',
 		'password',
 		'flag_id',
 		
 		'body',
+		'body_has_content',
 		'body_too_long',
 		'body_parsed',
 		'body_parsed_preview',
@@ -106,14 +112,14 @@ class Post extends Model {
 		'body_html',
 		
 		// Relationships
-		'bans',
+		// 'bans',
 		'board',
-		'citedBy',
-		'citedPosts',
-		'editor',
+		// 'citedBy',
+		// 'citedPosts',
+		// 'editor',
 		'op',
-		'replies',
-		'reports',
+		// 'replies',
+		// 'reports',
 	];
 
 	/**
@@ -126,7 +132,7 @@ class Post extends Model {
 		'content_html',
 		'recently_created',
 	];
-
+	
 	/**
 	 * Attributes which are automatically sent through a Carbon instance on load.
 	 *
@@ -144,11 +150,11 @@ class Post extends Model {
 		'body_parsed_at',
 		'author_ip_nulled_at',
 	];
-
-
+	
+	
 	public function attachments()
 	{
-		return $this->belongsToMany("\App\FileStorage", 'file_attachments', 'post_id', 'file_id')->withPivot('filename', 'is_spoiler', 'position');
+		return $this->belongsToMany("\App\FileStorage", 'file_attachments', 'post_id', 'file_id')->withPivot('attachment_id', 'filename', 'is_spoiler', 'is_deleted', 'position');
 	}
 
 	public function attachmentLinks()
@@ -356,7 +362,7 @@ class Post extends Model {
 
 		return $count;
 	}
-
+	
 	/**
 	 * Checks a supplied password against the set one.
 	 *
@@ -365,11 +371,31 @@ class Post extends Model {
 	 */
 	public function checkPassword($password)
 	{
-		$hash = $this->makePassword($password);
-
-		return (!is_null($hash) && !is_null($this->password) && $this->password === $hash);
+		$hash = $this->makePassword($password, false);
+		
+		return !is_null($hash) && !is_null($this->password) && password_verify($hash, $this->password);
 	}
+	
+	/**
+	 * Removes post HTML caches..
+	 *
+	 * @return void
+	 */
+	public function clearPostHTMLCache()
+	{
+		
+		switch (env('CACHE_DRIVER'))
+		{
+			case "file" :
+			case "database" :
+				break;
 
+			default :
+				Cache::tags(["post_{$this->post_id}"])->flush();
+				break;
+		}
+	}
+	
 	/**
 	 * Removes thread caches containing this post.
 	 *
@@ -392,7 +418,7 @@ class Post extends Model {
 					break;
 			}
 		}
-
+		
 		switch (env('CACHE_DRIVER'))
 		{
 			case "file" :
@@ -405,7 +431,7 @@ class Post extends Model {
 				break;
 		}
 	}
-
+	
 	/**
 	 * Returns backlinks for this post which are permitted by board config.
 	 *
@@ -477,24 +503,29 @@ class Post extends Model {
 	 * Bcrypts a password using relative information.
 	 *
 	 * @param  string  $password  The password to be set. If empty password is given, no password will be set.
+	 * @param  boolean  $encrypt  Optional. Indicates if the hash should be bcrypted. Defaults true.
 	 * @return string
 	 */
-	public function makePassword($password = null)
+	public function makePassword($password = null, $encrypt = true)
 	{
-		$hash = null;
-
+		$hashParts = [];
+		
 		if (!!$password)
 		{
-			$hashParts = [];
 			$hashParts[] = env('APP_KEY');
 			$hashParts[] = $this->board_uri;
-			$hashParts[] = $this->reply_to_board_id ?: $this->board_id;
-			$hashParts[] = $this->password;
-
-			$hash = bcrypt(implode($hashParts, "|"));
+			$hashParts[] = $password;
+			$hashParts[] = $this->board_id;
 		}
-
-		return $hash;
+		
+		$parts = implode($hashParts, "|");
+		
+		if ($encrypt)
+		{
+			return bcrypt($parts);
+		}
+		
+		return $parts;
 	}
 
 
@@ -573,51 +604,53 @@ class Post extends Model {
 			// Markdown parsed content
 			if (!is_null($this->body_html))
 			{
-				if (mb_check_encoding($this->body_html, 'UTF-8'))
+				if (!mb_check_encoding($this->body_html, 'UTF-8'))
 				{
 					return "<tt style=\"color:red;\">Invalid encoding. This should never happen!</tt>";
 				}
-
+				
 				return $this->body_html;
 			}
-
+			
 			// Raw HTML input
 			if (!is_null($this->body_parsed))
 			{
 				return $this->body_parsed;
 			}
 		}
-
+		
 		$ContentFormatter          = new ContentFormatter();
 		$this->body_too_long       = false;
 		$this->body_parsed         = $ContentFormatter->formatPost($this);
 		$this->body_parsed_preview = null;
 		$this->body_parsed_at      = $this->freshTimestamp();
-
+		$this->body_has_content    = $ContentFormatter->hasContent();
+		
 		if (!mb_check_encoding($this->body_parsed, 'UTF-8'))
 		{
 			return "<tt style=\"color:red;\">Invalid encoding. This should never happen!</tt>";
 		}
-
-
+		
+		
 		// If our body is too long, we need to pull the first X characters and do that instead.
 		// We also set a token indicating this post has hidden content.
-		if (strlen($this->body) > 1200)
+		if (mb_strlen($this->body) > 1200)
 		{
 			$this->body_too_long = true;
 			$this->body_parsed_preview = $ContentFormatter->formatPost($this, 1000);
 		}
-
+		
 		// We use an update here instead of just saving $post because, in this method
 		// there will frequently be additional properties on this object that cannot
 		// be saved. To make life easier, we just touch the object.
 		static::where(['post_id' => $this->post_id])->update([
+			'body_has_content'    => $this->body_has_content,
 			'body_too_long'       => $this->body_too_long,
 			'body_parsed'         => $this->body_parsed,
 			'body_parsed_preview' => $this->body_parsed_preview,
 			'body_parsed_at'      => $this->body_parsed_at,
 		]);
-
+		
 		return $this->body_parsed;
 	}
 
@@ -698,13 +731,7 @@ class Post extends Model {
 	{
 		if (!$this->trashed())
 		{
-			return \View::make('content.board.post', [
-					'board'    => $this->board,
-					'post'     => $this,
-					'op'       => false,
-					'reply_to' => $this->reply_to ?: $this->board_id,
-					'preview'  => false,
-			])->render();
+			return $this->toHTML(false, false, false);
 		}
 
 		return null;
@@ -995,6 +1022,11 @@ class Post extends Model {
 	 */
 	public function getAuthorIpAttribute()
 	{
+		if (!isset($this->attributes['author_ip']))
+		{
+			return null;
+		}
+		
 		if ($this->attributes['author_ip'] instanceof IP)
 		{
 			return $this->attributes['author_ip'];
@@ -1191,7 +1223,7 @@ class Post extends Model {
 	 */
 	public static function getRecentPosts($number = 16, $sfwOnly = true)
 	{
-		return static::where('body', '<>', "")
+		return static::where('body_has_content', true)
 			->whereHas('board', function($query) use ($sfwOnly) {
 				$query->where('is_indexed', '=', true);
 				$query->where('is_overboard', '=', true);
@@ -1297,7 +1329,20 @@ class Post extends Model {
 	 */
 	public function hasBody()
 	{
-		return strlen( trim( (string) $this->attributes['body'] ) ) > 0;
+		$body = false;
+		$body_html = false;
+		
+		if (isset($this->attributes['body']))
+		{
+			$body = strlen( trim( (string) $this->attributes['body'] ) ) > 0;
+		}
+		
+		if (isset($this->attributes['body_html']))
+		{
+			$body_html = strlen( trim( (string) $this->attributes['body_html'] ) ) > 0;
+		}
+		
+		return $body || $body_html;
 	}
 	
 	/**
@@ -1327,7 +1372,7 @@ class Post extends Model {
 		$rememberTimer   = 30;
 		$rememberKey     = "site.overboard.page.{$page}";
 		$rememberClosure = function() use ($page, $postsPerPage) {
-			$threads = static::with('board', 'board.settings')
+			$threads = static::with('board', 'board.settings', 'board.assets')
 				->op()
 				->withEverything()
 				->with(['replies' => function($query) {
@@ -1352,6 +1397,8 @@ class Post extends Model {
 				$thread->replies     = $thread->replies
 					->reverse()
 					->splice(-$replyTake, $replyTake);
+				
+				$thread->prepareForCache();
 			}
 			
 			return $threads;
@@ -1370,6 +1417,29 @@ class Post extends Model {
 		}
 		
 		return $threads;
+	}
+	
+	/**
+	 * Prepares a thread and its relationships for a complete cache.
+	 *
+	 * @return \App\Post
+	 */
+	public function prepareForCache($board = null)
+	{
+		## TODO ##
+		// Find a better way to do this.
+		// Call these methods so we typecast the IP as an IP class before
+		// we invoke memory caching.
+		$this->author_ip;
+		$board = $this->getRelation('board' ?: $this->load('board'));
+		
+		foreach ($this->replies as $reply)
+		{
+			$reply->author_ip;
+			$reply->setRelation('board', $board);
+		}
+		
+		return $this;
 	}
 	
 	/**
@@ -1514,6 +1584,7 @@ class Post extends Model {
 	{
 		return $query->with([
 			'backlinks' => function($query) {
+				$query->has('post');
 				$query->orderBy('post_id', 'asc');
 			},
 			'backlinks.post' => function($query) {
@@ -1543,7 +1614,6 @@ class Post extends Model {
 				$join->on('roles.role_id', '=', 'posts.capcode_id');
 			})
 			->addSelect(
-				'posts.*',
 				'roles.capcode as capcode_capcode',
 				'roles.role as capcode_role',
 				'roles.name as capcode_name'
@@ -1563,7 +1633,6 @@ class Post extends Model {
 				$join->on('users.user_id', '=', 'posts.updated_by');
 			})
 			->addSelect(
-				'posts.*',
 				'users.username as updated_by_username'
 			);
 	}
@@ -1583,14 +1652,16 @@ class Post extends Model {
 	
 	public function scopeAndReplies($query)
 	{
-		return $query->with(['replies' => function($query) {
+		return $query->with(['replies' => function($query)
+		{
 			$query->withEverything();
 		}]);
 	}
 	
 	public function scopeAndPromotedReports($query)
 	{
-		return $query->with(['reports' => function($query) {
+		return $query->with(['reports' => function($query)
+		{
 			$query->whereOpen();
 			$query->wherePromoted();
 		}]);
@@ -1672,6 +1743,7 @@ class Post extends Model {
 	public function scopeWithEverythingForReplies($query)
 	{
 		return $query
+			->addSelect("posts.*")
 			->andAttachments()
 			->andBans()
 			->andBacklinks()
@@ -1750,6 +1822,74 @@ class Post extends Model {
 			->withTrashed()
 			// Order by board id in reverse order (so they appear in the thread right).
 			->orderBy('posts.board_id', 'asc');
+	}
+	
+	/**
+	  *Renders a single post.
+	 *
+	 * @return string  HTML
+	 */
+	public function toHTML($catalog, $multiboard, $preview)
+	{
+		$rememberTags    = [
+			"board.{$this->board->board_uri}",
+			"post_{$this->post_id}",
+			"post_html",
+		];
+		$rememberTimer   = 30;
+		$rememberKey     = "board.{$this->board->board_uri}.post_html.{$this->board_id}";
+		$rememberClosure = function() use ($catalog, $multiboard, $preview) {
+			$this->setRelation('attachments', $this->attachments->reverse());
+			
+			return \View::make('content.board.post', [
+				// Models
+				'board'      => $this->board,
+				'post'       => $this,
+				'user'       => user(),
+				
+				// Statuses
+				'catalog'    => $catalog,
+				'reply_to'   => $this->reply_to ?: false,
+				'multiboard' => $multiboard,
+				'preview'    => $preview,
+			])->render();
+		};
+		
+		if (!user()->isAnonymous())
+		{
+			return $rememberClosure();
+		}
+		
+		if ($catalog)
+		{
+			$rememberTags[] = "catalog_post";
+			$rememberTimer += 30;
+		}
+		
+		if ($multiboard)
+		{
+			$rememberTags[] = "multiboard_post";
+			$rememberTimer -= 20;
+		}
+		
+		if ($preview)
+		{
+			$rememberTags[] = "preview_post";
+			$rememberTimer -= 20;
+			
+		}
+		switch (env('CACHE_DRIVER'))
+		{
+			case "file" :
+			case "database" :
+				break;
+			
+			default :
+				return Cache::tags($rememberTags)
+					->remember($rememberKey, $rememberTimer, $rememberClosure);
+		}
+		
+		return $rememberClosure();
 	}
 	
 	/**
@@ -1867,10 +2007,21 @@ class Post extends Model {
 			$thread = $board->getLocalThread($thread);
 		}
 		
+		if (Cache::has('posting_now_' . $this->author_ip->toLong()))
+		{
+			return abort(429);
+		}
+		
+		// Cache what time we're submitting our post for flood checks.
+		Cache::put('posting_now_' . $this->author_ip->toLong(), true, 1);
+		Cache::put('last_post_for_' . $this->author_ip->toLong(), $this->created_at->timestamp, 60);
+		
 		if ($thread instanceof Post)
 		{
 			$this->reply_to = $thread->post_id;
 			$this->reply_to_board_id = $thread->board_id;
+			
+			Cache::put('last_thread_for_' . $this->author_ip->toLong(), $this->created_at->timestamp, 60);
 		}
 		
 		// Handle tripcode, if any.
@@ -1938,7 +2089,6 @@ class Post extends Model {
 			if ($thread instanceof static)
 			{
 				// We're not using the Model for this because it fails under high volume.
-				
 				$threadNewValues = [
 					'updated_at'       => $thread->updated_at,
 					'reply_last'       => $this->created_at,
@@ -2017,6 +2167,7 @@ class Post extends Model {
 			Event::fire(new ThreadNewReply($thread));
 		}
 		
+		Cache::forget('posting_now_' . $this->author_ip->toLong());
 		return $this;
 	}
 	
@@ -2031,27 +2182,34 @@ class Post extends Model {
 	 */
 	public static function getForThreadView($board_uri, $board_id, $uri = null)
 	{
+		// Prepare the board so that we do not have to make redundant searches.
+		$board = null;
+		
+		if ($board_uri instanceof Board)
+		{
+			$board = $board_uri;
+			$board_uri = $board->board_uri;
+		}
+		else
+		{
+			$board = Board::find($board_uri);
+		}
+		
 		$rememberTags    = ["board.{$board_uri}", "threads"];
 		$rememberTimer   = 30;
 		$rememberKey     = "board.{$board_uri}.thread.{$board_id}";
-		$rememberClosure = function() use ($board_uri, $board_id) {
+		$rememberClosure = function() use ($board, $board_uri, $board_id) {
 			$thread = static::where([
 				'posts.board_uri' => $board_uri,
 				'posts.board_id'  => $board_id,
 			])->withEverythingAndReplies()->first();
 			
-			
-			## TODO ##
-			// Find a better way to do this.
-			// Call these methods so we typecast the IP as an IP class before
-			// we invoke memory caching.
-			$thread->author_ip;
-			
-			foreach ($thread->replies as $reply)
+			if ($thread)
 			{
-				$reply->author_ip;
+				$thread->setRelation('attachments', $thread->attachments->reverse());
+				$thread->prepareForCache();
 			}
-			
+			 
 			return $thread;
 		};
 		
@@ -2066,7 +2224,6 @@ class Post extends Model {
 				$thread = Cache::tags($rememberTags)->remember($rememberKey, $rememberTimer, $rememberClosure);
 				break;
 		}
-		
 		
 		if (!is_null($uri))
 		{

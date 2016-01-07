@@ -14,9 +14,15 @@ class EventServiceProvider extends ServiceProvider {
 	 */
 	protected $listen = [
 		// Post specific events
+		'App\Events\AttachmentWasModified' => [
+			'App\Listeners\BoardRecachePages',
+			'App\Listeners\OverboardRecache',
+			'App\Listeners\ThreadRecache',
+		],
 		'App\Events\PostWasAdded' => [
 			'App\Listeners\BoardRecachePages',
 			'App\Listeners\OverboardRecache',
+			'App\Listeners\PostHTMLRecache',
 			'App\Listeners\ThreadRecache',
 		],
 		'App\Events\PostWasBanned' => [
@@ -32,6 +38,7 @@ class EventServiceProvider extends ServiceProvider {
 		'App\Events\PostWasModified' => [
 			'App\Listeners\BoardRecachePages',
 			'App\Listeners\OverboardRecache',
+			'App\Listeners\PostHTMLRecache',
 			'App\Listeners\ThreadRecache',
 		],
 		'App\Events\PostWasModerated' => [
@@ -39,6 +46,7 @@ class EventServiceProvider extends ServiceProvider {
 			
 			'App\Listeners\BoardRecachePages',
 			'App\Listeners\OverboardRecache',
+			'App\Listeners\PostHTMLRecache',
 			'App\Listeners\ThreadRecache',
 		],
 		
@@ -56,6 +64,7 @@ class EventServiceProvider extends ServiceProvider {
 			'App\Listeners\UserRecachePermissions',
 		],
 		'App\Events\BoardWasModified' => [
+			'App\Listeners\BoardModelRecache',
 			'App\Listeners\BoardListRecache',
 			'App\Listeners\BoardStyleRecache',
 			'App\Listeners\OverboardRecache',

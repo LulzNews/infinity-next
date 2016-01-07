@@ -13,6 +13,10 @@
 
 Route::group([
 	'prefix' => '/',
+	'middleware' => [
+		\App\Http\Middleware\LocalizedSubdomains::class,
+		//\App\Http\Middleware\VerifyCsrfToken::class,
+	],
 ], function () {
 	
 	/*
@@ -23,7 +27,6 @@ Route::group([
 	Route::controller('boards.html',    'BoardlistController');
 	
 	Route::get('overboard.html', 'MultiboardController@getOverboard');
-	
 	
 	/*
 	| Control Panel (cp)
@@ -191,23 +194,42 @@ Route::group([
 		/*
 		| Board Attachment Routes (Files)
 		*/
-		Route::group([
-			'prefix'     => 'file',
-			'middleware' => 'App\Http\Middleware\FileFilter',
-			'namespace'  => 'Content',
-		], function()
+		if (!env('APP_URL_MEDIA'))
 		{
-			Route::get('{hash}/{filename}', 'ImageController@getImage')
-				->where([
-					'hash' => "[a-f0-9]{32}",
+			Route::group([
+				'prefix'     => 'file',
+				'middleware' => \App\Http\Middleware\FileFilter::class,
+				'namespace'  => 'Content',
+			], function()
+			{
+				Route::get('{hash}/{filename}', [
+					'as'   => 'static.file.hash',
+					'uses' => 'ImageController@getImageFromHash',
+				])->where(['hash' => "[a-f0-9]{32}",]);
+				
+				Route::get('{attachment}/{filename}', [
+					'as'   => 'static.file.attachment',
+					'uses' => 'ImageController@getImageFromAttachment',
 				]);
-			
-			Route::get('thumb/{hash}/{filename}', 'ImageController@getThumbnail')
-				->where([
-					'hash' => "[a-f0-9]{32}",
+				
+				Route::get('thumb/{hash}/{filename}', [
+					'as'   => 'static.thumb.hash',
+					'uses' => 'ImageController@getThumbnailFromHash',
+				])->where(['hash' => "[a-f0-9]{32}",]);
+				
+				Route::get('thumb/{attachment}/{filename}', [
+					'as'   => 'static.thumb.attachment',
+					'uses' => 'ImageController@getThumbnailFromAttachment',
 				]);
-		});
-		
+				
+				Route::get('remove/{attachment}', 'ImageController@getDeleteAttachment');
+				Route::post('remove/{attachment}', 'ImageController@postDeleteAttachment');
+				Route::get('spoiler/{attachment}', 'ImageController@getSpoilerAttachment');
+				Route::post('spoiler/{attachment}', 'ImageController@postSpoilerAttachment');
+				Route::get('unspoiler/{attachment}', 'ImageController@getSpoilerAttachment');
+				Route::post('unspoiler/{attachment}', 'ImageController@postSpoilerAttachment');
+			});
+		}
 		
 		/*
 		| Board API Routes (JSON)
@@ -317,8 +339,8 @@ Route::group([
 			| These are greedy and will redirect before others, so make sure they stay last.
 			*/
 			// Get stylesheet
-			Route::get('style.css', 'BoardController@getStylesheet');
-			Route::get('style.txt', 'BoardController@getStylesheetAsText');
+			Route::get('{style}.css', 'BoardController@getStylesheet');
+			Route::get('{style}.txt', 'BoardController@getStylesheetAsText');
 			
 			// Pushes simple /board/ requests to their index page.
 			Route::any('/', 'BoardController@getIndex');
@@ -364,24 +386,39 @@ Route::group([
 	
 });
 
-Route::group([
-	'domain'     => 'static.{domain}.{tld}',
-	'namespace'  => 'Content',
-], function() {
-	
+/*
+| Board Attachment Routes (Files)
+*/
+if (env('APP_URL_MEDIA'))
+{
 	Route::group([
-		'prefix' => "image",
-	], function()
-	{
-		Route::get('{hash}/{filename}', 'ImageController@getImage')
-			->where([
-				'hash' => "[a-f0-9]{32}",
-			]);
+		'domain'     => env('APP_URL_MEDIA'),
+		'prefix'     => 'file',
+		'middleware' => [
+			\App\Http\Middleware\FileFilter::class,
+		],
+		'namespace'  => 'Content',
+	], function() {
 		
-		Route::get('thumb/{hash}/{filename}', 'ImageController@getThumbnail')
-			->where([
-				'hash' => "[a-f0-9]{32}",
-			]);
+		Route::get('{hash}/{filename}', [
+			'as'   => 'static.file.hash',
+			'uses' => 'ImageController@getImageFromHash',
+		])->where(['hash' => "[a-f0-9]{32}",]);
+		
+		Route::get('{attachment}/{filename}', [
+			'as'   => 'static.file.attachment',
+			'uses' => 'ImageController@getImageFromAttachment',
+		]);
+		
+		Route::get('thumb/{hash}/{filename}', [
+			'as'   => 'static.thumb.hash',
+			'uses' => 'ImageController@getThumbnailFromHash',
+		])->where(['hash' => "[a-f0-9]{32}",]);
+		
+		Route::get('thumb/{attachment}/{filename}', [
+			'as'   => 'static.thumb.attachment',
+			'uses' => 'ImageController@getThumbnailFromAttachment',
+		]);
+		
 	});
-	
-});
+}

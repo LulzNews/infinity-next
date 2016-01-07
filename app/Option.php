@@ -30,7 +30,14 @@ class Option extends Model implements PseudoEnumContract {
 	 *
 	 * @var array
 	 */
-	protected $fillable = ['option_name', 'default_value', 'format', 'format_parameters', 'data_type'];
+	protected $fillable = [
+		'option_name',
+		'default_value',
+		'format',
+		'format_parameters',
+		'data_type',
+		'validation_parameters',
+	];
 	
 	/**
 	 * Psuedo-enum attributes and their permissable values.
@@ -69,6 +76,13 @@ class Option extends Model implements PseudoEnumContract {
 	];
 	
 	/**
+	 * Denotes our primary key is not an autoincrementing integer.
+	 *
+	 * @var string
+	 */
+	public $incrementing = false;
+	
+	/**
 	 * Determines if Laravel should set created_at and updated_at timestamps.
 	 *
 	 * @var array
@@ -76,10 +90,21 @@ class Option extends Model implements PseudoEnumContract {
 	public $timestamps = false;
 	
 	
+	public function boardSetting()
+	{
+		return $this->hasOne('\App\BoardSetting', 'option_name');
+	}
+	
 	public function groups()
 	{
 		return $this->belongsToMany("\App\OptionGroup", 'option_group_assignments', 'option_name', 'option_group_id');
 	}
+	
+	public function siteSetting()
+	{
+		return $this->hasOne('\App\SiteSetting', 'option_name');
+	}
+	
 	
 	/**
 	 * Gets choices for this select box.

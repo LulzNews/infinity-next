@@ -22,11 +22,11 @@ class HistoryController extends PanelController {
 	|
 	*/
 	
-	const VIEW_HISTORY = "multiboard";
+	const VIEW_HISTORY = "history";
 	
 	public function getHistory($ip = null)
 	{
-		if (!$this->user->canViewRawIP())
+		if (!$this->user->canViewGlobalHistory())
 		{
 			return abort(403);
 		}
@@ -57,11 +57,17 @@ class HistoryController extends PanelController {
 		
 		return $this->view(static::VIEW_HISTORY, [
 			'posts' => $posts,
+			'ip'    => $ip->toText(),
 		]);
 	}
 	
 	public function getBoardHistory(Board $board, Post $post)
 	{
+		if (!$this->user->canViewHistory($post))
+		{
+			return abort(403);
+		}
+		
 		$posts = $board->posts()
 			->with('op')
 			->withEverything()
@@ -77,6 +83,7 @@ class HistoryController extends PanelController {
 		return $this->view(static::VIEW_HISTORY, [
 			'posts'      => $posts,
 			'multiboard' => false,
+			'ip'         => ip_less($post->author_ip->toText()),
 		]);
 	}
 	
